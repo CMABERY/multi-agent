@@ -1,0 +1,3 @@
+# Delegation Packet Protocol
+
+Every task packet must include TASK, ROLE, GOAL, INPUTS, DO NOT USE, OUTPUT FORMAT, ACCEPTANCE CRITERIA, KNOWN RISKS, DEPENDENCIES, and REPORTING CHANNEL.

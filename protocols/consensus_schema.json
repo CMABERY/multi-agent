@@ -1,0 +1,31 @@
+{
+  "consensus_records": [
+    {
+      "consensus_id": "C-001",
+      "task_id": "T-001",
+      "review_ids": ["R-001", "R-002"],
+      "reviewer_count": 2,
+      "per_criterion": [
+        {
+          "criterion": "Verbatim acceptance criterion",
+          "pass_count": 2,
+          "fail_count": 0,
+          "unverifiable_count": 0,
+          "abstain_count": 0,
+          "verdict": "pass",
+          "convergent_citations": [
+            {
+              "artifact_id": "ART-001",
+              "line_start": 2,
+              "line_end": 3
+            }
+          ],
+          "dissent": []
+        }
+      ],
+      "overall_verdict": "pass",
+      "is_load_bearing": true,
+      "created_at": "2026-05-08T00:00:00.000Z"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "review_id": "R-001",
+  "task_id": "T-001",
+  "reviewer_agent_id": "reviewer_skeptical",
+  "reviewer_persona": "skeptical",
+  "status": "pass",
+  "per_criterion": [
+    {
+      "criterion": "Verbatim acceptance criterion",
+      "verdict": "pass",
+      "citations": [
+        {
+          "artifact_id": "ART-001",
+          "line_start": 1,
+          "line_end": 3
+        }
+      ],
+      "rationale": "Cited lines satisfy the criterion.",
+      "confidence": 0.9
+    }
+  ],
+  "identified_issues": [],
+  "free_form_assessment": "",
+  "malformed": false,
+  "truncated": false,
+  "created_at": "2026-05-08T00:00:00.000Z"
+}
