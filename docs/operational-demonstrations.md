@@ -1,27 +1,33 @@
 # MAW Operational Demonstration Suite
 
-This document demonstrates how MAW is operated in practice. The operator manual is the command reference. This file is the scenario guide: it shows one complete normal run and the situational workflows an operator is likely to encounter.
+This is the scenario guide for operating MAW. Use it to practice complete workflows, common failure paths, and handoff routines.
 
-All examples use PowerShell from the repository checkout at C:\Multi-Agent.
+For exact command inputs, reads, writes, and exit behavior, use [operator-manual.md](operator-manual.md). This document shows how those commands fit together during real operation.
 
-Do not run subcommand labels by themselves. intent create is not a PowerShell command. It must be invoked through MAW:
+All examples assume PowerShell and a repository checkout at C:\Multi-Agent.
+
+Do not run MAW subcommand labels by themselves. intent create is not a PowerShell executable. Invoke it through MAW:
 
     node .\dist\src\index.js intent create --text "Build a verified demo artifact."
 
-## Demonstration Ground Rules
+## Demonstration Setup
 
-Run demonstrations in an isolated workspace when possible. MAW reads and writes state in the current working directory, so a scratch directory prevents accidental changes to the live state/ folder.
+Run demonstrations in an isolated workspace when possible. MAW reads and writes state in the current working directory, so a scratch workspace prevents accidental changes to live state/.
+
+Prepare the CLI:
 
     cd C:\Multi-Agent
     npm install
     npm run build
+
+Prepare a scratch workspace:
 
     $MawCli = "C:\Multi-Agent\dist\src\index.js"
     $DemoRoot = "$env:TEMP\maw-operational-demo"
     New-Item -ItemType Directory -Force $DemoRoot | Out-Null
     Set-Location $DemoRoot
 
-From the scratch workspace, every MAW command should use:
+Run MAW from the scratch workspace:
 
     node $MawCli <command>
 
@@ -29,11 +35,26 @@ Model-backed demonstrations require the environment variable named in state/mode
 
     $env:OPENAI_API_KEY = "sk-..."
 
-State-only demonstrations do not need an API key. These include init, intent create, approval record, plan-check, context-check, consensus compute, migrate, score, retrospective, performance update, validate, and report.
+State-only demonstrations do not need an API key:
+
+- init
+- intent create
+- approval record
+- plan-check
+- context-check
+- review record
+- consensus compute
+- migrate
+- score
+- retrospective
+- performance update
+- validate
+- report
+- bootstrap
 
 ## Demo Index
 
-| Situation | Demonstration |
+| Situation | Demo |
 | --- | --- |
 | Normal operator path | Demo 1 |
 | Fresh workspace setup | Demo 2 |
@@ -44,7 +65,7 @@ State-only demonstrations do not need an API key. These include init, intent cre
 | Local command execution | Demo 7 |
 | Local command blocked by missing --execute or allowlist | Demo 8 |
 | Context is missing or unreadable | Demo 9 |
-| Review and synthesis dependencies lack artifacts | Demo 10 |
+| Review or synthesis dependencies lack artifacts | Demo 10 |
 | Structured review and consensus verification | Demo 11 |
 | Rubber-stamp reviews do not verify output | Demo 12 |
 | Legacy review migration | Demo 13 |
@@ -55,126 +76,90 @@ State-only demonstrations do not need an API key. These include init, intent cre
 | Failed deployment recovery | Demo 18 |
 | Validation and expected legacy failures | Demo 19 |
 | Operator handoff package | Demo 20 |
+| Bootstrap session readiness | Demo 21 |
 
 ## Demo 1: Complete Typical Workflow
 
-This is the normal end-to-end path: create an intent, orchestrate a plan, approve it, run it, verify it, score it, learn from it, and produce a report.
+Purpose: run the normal path from intent to report.
 
-Start in a fresh scratch workspace:
+Run:
 
     Set-Location $DemoRoot
     node $MawCli init
-
-Expected output:
-
-    Initialized multi-agent workflow workspace.
-
-Create a medium-risk intent:
-
     node $MawCli intent create --text "Create a concise operator-facing summary of the MAW verification workflow." --risk medium --constraint "Use only workspace-local evidence." --constraint "The output must be reviewable by cited acceptance criteria."
-
-Expected output:
-
-    I-001
-
-Ask the orchestrator to produce the prompt contract, tasks, and deployment plan:
-
     node $MawCli orchestrate --intent I-001
-
-Expected output pattern:
-
-    Created deployment DP-001 with tasks T-001, T-002.
-
-If orchestration throws with pre-flight violations, go to Demo 17. Otherwise inspect the proposed plan:
-
     node $MawCli plan-check --deployment DP-001
     node $MawCli report
-
-If plan-check reports high-severity issues, do not approve yet. Fix the upstream cause or re-orchestrate after adjusting the intent or registry.
-
-Approve the deployment:
-
     node $MawCli approval record --deployment DP-001 --approver "operator" --scope "Run DP-001 exactly as proposed by the orchestrator."
-
-Expected output:
-
-    AP-001
-
-Run the deployment:
-
     node $MawCli run --deployment DP-001
-
-Expected output pattern:
-
-    Completed: T-001, T-002
-
-For review-required deliverables, run also spawns structured reviewers and computes consensus. Medium-risk review-required tasks receive two reviewers. High-risk review-required tasks receive three.
-
-Compute score, retrospective, performance memory, and validation:
-
     node $MawCli score --deployment DP-001
     node $MawCli retrospective --deployment DP-001
     node $MawCli performance update --deployment DP-001
     node $MawCli validate
     node $MawCli report
 
-Successful completion means:
+Expected result:
 
-- The deployment status is completed.
-- Review-required deliverables have load-bearing consensus.
-- workflow_score.json has been refreshed.
-- learning_memory.json has been updated from plan and context defects.
-- agent_registry.json contains updated performance data when the deployment produced ledger entries.
-- validate either passes or reports issues that the operator explicitly accepts as expected historical state.
+- init prints Initialized multi-agent workflow workspace.
+- intent create prints I-001.
+- orchestrate prints a created deployment such as DP-001 with task IDs.
+- plan-check has no high-severity issues before approval.
+- approval record prints AP-001.
+- run prints completed task IDs or records blockers for failures.
+- score, retrospective, performance update, validate, and report complete the run evidence.
+
+Operator decision:
+
+- If orchestrate fails with pre-flight violations, use Demo 17.
+- If plan-check reports high severity, do not approve yet.
+- If run fails, use Demo 18.
+- If score remains zero for a review-required deliverable, use Demo 11 or Demo 12.
 
 ## Demo 2: Fresh Workspace Setup
 
-Use this when starting a new workspace or repairing missing default files.
+Purpose: start a new workspace or repair missing default files.
+
+Run:
 
     Set-Location $DemoRoot
     node $MawCli init
     node $MawCli validate
 
-Expected output:
-
-    Initialized multi-agent workflow workspace.
-    Workflow state is valid.
-
-Inspect the default files:
+Inspect:
 
     Get-ChildItem state
     Get-ChildItem artifacts
     Get-Content state\agent_registry.json
     Get-Content state\model_config.json
 
-The fresh registry should include:
+Expected result:
 
-- orchestrator_1
-- researcher_1
-- builder_1
-- reviewer_skeptical
-- reviewer_completeness
-- reviewer_rigor
+- init prints Initialized multi-agent workflow workspace.
+- validate prints Workflow state is valid.
+- state/ and artifacts/ exist.
+- agent_registry.json includes orchestrator_1, researcher_1, builder_1, reviewer_skeptical, reviewer_completeness, and reviewer_rigor.
 
-The three reviewer agents are important. High-risk review-required tasks need three distinct reviewer personas.
+Operator decision:
+
+- If validation fails immediately, inspect pre-existing state files. init does not overwrite existing files.
 
 ## Demo 3: Intent Capture Variants
 
-Use intent create to record operator intent before planning. Intent records preserve risk, constraints, and budget.
+Purpose: record objectives with the right risk, constraints, and budget before planning.
 
-Low-risk packet-only intent:
+Run low-risk packet-only intent:
 
     node $MawCli intent create --text "Create a delegation packet for a future implementation only." --risk low --constraint "Do not produce the implementation."
 
-Medium-risk normal deliverable:
+Run medium-risk normal deliverable intent:
 
     node $MawCli intent create --text "Draft a verified operating checklist for reviewers." --risk medium --budget "Keep estimated model cost below 1 USD."
 
-High-risk intent:
+Run high-risk reviewable intent:
 
     node $MawCli intent create --text "Analyze a high-risk deployment decision and produce a reviewable recommendation." --risk high --constraint "Require independent review." --constraint "Every acceptance criterion must be evidence-checkable."
 
-Inspect the queue:
+Inspect:
 
     Get-Content state\intent_queue.json | ConvertFrom-Json | Select-Object -ExpandProperty intents
 
@@ -182,43 +167,49 @@ Operator decision:
 
 - Use low only when mistakes have low consequence.
 - Use medium for normal deliverables.
-- Use high when the output should require stronger independent verification.
+- Use high when the output needs stronger independent verification.
 
 ## Demo 4: Approval Required Before Execution
 
-Plans commonly require approval. If the operator tries to run before approval, MAW blocks execution.
+Purpose: verify that MAW blocks execution until a deployment is approved.
+
+Run before approval:
 
     node $MawCli run --deployment DP-001
 
-Expected failure pattern:
+Expected failure:
 
     Deployment DP-001 requires explicit approval before execution.
 
-Record approval:
+Approve:
 
     node $MawCli approval record --deployment DP-001 --approver "operator" --scope "Run DP-001 after plan-check review."
 
-Then run:
+Run after approval:
 
     node $MawCli run --deployment DP-001
 
-To reject instead:
+Reject instead:
 
     node $MawCli approval record --deployment DP-001 --approver "operator" --scope "Reject until routing is corrected." --decision rejected
 
-A rejected deployment is set to blocked. Re-orchestrate or repair state before approval.
+Operator decision:
+
+- Approval scope should be exact enough for later audit.
+- A rejected deployment is set to blocked. Re-orchestrate or repair state before approval.
 
 ## Demo 5: Dry-Run Packet Only
 
-Dry-run is valid for delegation packets and task packets. It is not valid for real deliverables.
+Purpose: use dry_run only for packet generation, not real deliverables.
 
-Create an explicit packet-only intent:
+Run:
 
     node $MawCli intent create --text "Create a delegation packet only for a future documentation implementation." --risk low --constraint "The output is only a packet, not the final documentation."
     node $MawCli orchestrate --intent I-001
     node $MawCli plan-check --deployment DP-001
     node $MawCli approval record --deployment DP-001 --approver "operator" --scope "Emit packet-only output."
     node $MawCli run --deployment DP-001
+    node $MawCli score --deployment DP-001
 
 Expected artifact:
 
@@ -226,13 +217,16 @@ Expected artifact:
 
 Expected score behavior:
 
-    node $MawCli score --deployment DP-001
+- Packet-only tasks can complete.
+- They are not automatically verified useful outputs unless review-required and backed by passing consensus.
 
-Packet-only tasks can complete, but they are not automatically verified useful outputs unless they are review-required and receive passing consensus.
+Operator decision:
+
+- If the expected result is a real deliverable, do not accept dry_run routing.
 
 ## Demo 6: Dry-Run Incorrectly Used For A Deliverable
 
-If a task asks for a real deliverable but the assignment uses dry_run, plan-check reports DRY_RUN_DELIVERABLE.
+Purpose: identify and reject a plan that routes real deliverables to dry_run.
 
 Run:
 
@@ -243,37 +237,29 @@ Failure pattern:
     HIGH DRY_RUN_DELIVERABLE T-001: Task T-001 requires a deliverable but is routed to dry_run.
     Fix: Route deliverable tasks to model_agent or local_command; reserve dry_run for packet generation.
 
-Operator response:
+Operator decision:
 
 1. Do not approve the deployment.
 2. Clarify the intent if the expected output is only a packet.
 3. Re-orchestrate if the output is a real deliverable.
 4. Confirm the corrected assignment uses model_agent or local_command.
 
-This defect is high severity. During orchestration, B.1 pre-flight should reject the invalid plan before it is persisted and retry automatically.
-
 ## Demo 7: Local Command Execution
 
-Local commands require explicit approval, an allowlisted command, and the --execute flag.
+Purpose: run an allowlisted local command only after approval and explicit execution consent.
 
 A valid local-command task needs:
 
 - An agent whose executor_type is local_command.
-- The command in that agent's command_allowlist.
+- The command in that agent command_allowlist.
 - A task command block with command and args.
 - A deployment assignment using executor: "local_command".
 - An approval record.
 
-Before running:
+Run:
 
     node $MawCli plan-check --deployment DP-001
-
-Approve:
-
     node $MawCli approval record --deployment DP-001 --approver "operator" --scope "Run the allowlisted local command in DP-001."
-
-Execute:
-
     node $MawCli run --deployment DP-001 --execute
 
 Expected artifacts:
@@ -282,11 +268,15 @@ Expected artifacts:
     artifacts/runs/<task_id>/command_error.txt
     artifacts/runs/<task_id>/command_result.json
 
-If the command exits with code 0, MAW registers a command_output artifact. If it exits nonzero, the task is marked failed and the blocker is recorded.
+Operator decision:
+
+- Exit code 0 registers a command_output artifact.
+- Nonzero exit marks the task failed and records a blocker.
+- Do not add broad command allowlists casually.
 
 ## Demo 8: Local Command Blocked By Policy
 
-Two common local-command failures are missing --execute and missing allowlist entries.
+Purpose: recognize missing execution consent and missing allowlist entries.
 
 Without --execute:
 
@@ -304,16 +294,17 @@ Failure pattern:
 
     HIGH LOCAL_COMMAND_NOT_ALLOWLISTED T-001/node: Command node is not allowlisted for shell_1.
 
-Operator response:
+Operator decision:
 
 - Add the command to the intended local-command agent only if it is safe.
 - Route the task to a different allowlisted agent if available.
-- Do not widen permissions or command allowlists casually.
 - Re-run plan-check before approval.
 
 ## Demo 9: Context Is Missing Or Unreadable
 
-Run a context check before executing a task that depends on local files or upstream artifacts.
+Purpose: catch missing local files, unsafe paths, and unreadable context before running a task.
+
+Run:
 
     node $MawCli context-check --task T-001
 
@@ -327,20 +318,20 @@ Path escape pattern:
     HIGH CONTEXT_PATH_ESCAPES_WORKSPACE ../secret.txt: Context path escapes workspace: ../secret.txt.
     Fix: Use a workspace-relative context path.
 
-Operator response:
+Automation-friendly output:
+
+    node $MawCli context-check --task T-001 --json
+
+Operator decision:
 
 1. Keep task context paths workspace-relative.
 2. Create missing context files or remove bad references.
 3. Re-run context-check.
-4. Only continue when high-severity context issues are gone.
-
-JSON output is useful for automation:
-
-    node $MawCli context-check --task T-001 --json
+4. Continue only when high-severity context issues are gone.
 
 ## Demo 10: Review Or Synthesis Dependency Lacks Artifacts
 
-Review and synthesis tasks need dependency artifacts to inspect. If a dependency did not produce an indexed artifact, context and plan checks block the route.
+Purpose: confirm reviewers and synthesizers have dependency artifacts to inspect.
 
 Plan-check pattern:
 
@@ -352,7 +343,12 @@ Context-check pattern:
     HIGH DEPENDENCY_ARTIFACT_MISSING T-001: Dependency T-001 has no indexed artifacts.
     Fix: Add a model/command output artifact for the dependency before continuing.
 
-Operator response:
+Inspect:
+
+    Get-Content artifacts\artifact_index.json
+    Get-ChildItem artifacts\runs -Recurse
+
+Operator decision:
 
 - Run or rerun the dependency task first.
 - Confirm artifacts/artifact_index.json contains an artifact for the dependency.
@@ -361,11 +357,7 @@ Operator response:
 
 ## Demo 11: Structured Review And Consensus Verification
 
-For review-required deliverables, run automatically spawns structured reviewers after the deliverable task completes. Reviewer count follows risk:
-
-- Low: 1 reviewer
-- Medium: 2 reviewers
-- High: 3 reviewers
+Purpose: verify that review-required deliverables are accepted only through structured evidence and consensus.
 
 Inspect reviews:
 
@@ -375,7 +367,18 @@ Inspect consensus:
 
     node $MawCli consensus compute --task T-001 --json
 
-A passing consensus requires:
+Score after consensus:
+
+    node $MawCli score --deployment DP-001
+
+Expected verified score pattern:
+
+    Verified Useful Outputs: 1
+    Consensus Pass Count: 1
+    Consensus Split Count: 0
+    Consensus Insufficient Count: 0
+
+Passing consensus requires:
 
 - Each criterion resolves to pass.
 - Reviewers cite evidence.
@@ -383,26 +386,13 @@ A passing consensus requires:
 - No reviewer fails the criterion with valid citations.
 - Enough non-abstaining reviewers participated for the task risk level.
 
-Score after consensus:
+Operator decision:
 
-    node $MawCli score --deployment DP-001
-
-Expected verified score pattern for a genuinely verified deliverable:
-
-    Verified Useful Outputs: 1
-    Consensus Pass Count: 1
-    Consensus Split Count: 0
-    Consensus Insufficient Count: 0
-
-If score remains zero, inspect:
-
-    node $MawCli consensus compute --task T-001 --json
-    Get-Content state\review_log.json
-    Get-Content artifacts\artifact_index.json
+- If score remains zero, inspect consensus JSON, review_log.json, and artifacts/artifact_index.json.
 
 ## Demo 12: Rubber-Stamp Reviews Do Not Verify Output
 
-A review that says pass without citations is not enough. This is the core honest-verification behavior.
+Purpose: show that pass without citations is not enough.
 
 Failure pattern in consensus:
 
@@ -420,19 +410,19 @@ Score pattern:
     Verified Useful Outputs: 0
     Consensus Pass Count: 0
 
-Operator response:
+Operator decision:
 
 - Treat citation-free pass reviews as malformed evidence, not success.
 - Rerun reviewers with line-numbered dependency artifacts available.
 - Confirm reviewer JSON includes one per_criterion entry per acceptance criterion.
 - Confirm every pass verdict includes at least one citation.
-- For medium/high risk, confirm cited ranges overlap across reviewers.
+- For medium and high risk, confirm cited ranges overlap across reviewers.
 
 ## Demo 13: Legacy Review Migration
 
-Pre-v0.3 review records were flat enum reviews. Migration converts them to structured abstentions. It does not promote old pass enums into verified content.
+Purpose: convert pre-v0.3 flat review records into honest structured abstentions.
 
-Run migration:
+Run:
 
     node $MawCli migrate
 
@@ -440,7 +430,7 @@ Expected output:
 
     Migrated 17 legacy reviews.
 
-Re-run migration to verify idempotency:
+Verify idempotency:
 
     node $MawCli migrate
 
@@ -448,7 +438,7 @@ Expected output:
 
     Migrated 0 legacy reviews.
 
-Refresh score and performance:
+Refresh derived state:
 
     node $MawCli score --deployment DP-001
     node $MawCli performance update --deployment DP-001
@@ -460,11 +450,15 @@ Expected consequence:
 - Consensus becomes insufficient.
 - verified_useful_outputs can fall to 0.
 
-This is intended. It means MAW no longer treats unverified enum reviews as content verification.
+Operator decision:
+
+- This is intended. MAW does not treat unverified enum reviews as content verification.
 
 ## Demo 14: Score And Rerun Interpretation
 
-Score is computed from state and written to state/workflow_score.json.
+Purpose: understand workflow intelligence yield and rerun penalties.
+
+Run:
 
     node $MawCli score --deployment DP-001
     node $MawCli score --deployment DP-001 --json
@@ -480,48 +474,48 @@ Important fields:
 - context_failures: persisted context-check failures.
 - workflow_intelligence_yield: verified useful outputs divided by penalty-adjusted work.
 
-Rerun count includes primary deliverable artifact types:
+Rerun count includes:
 
 - model_output
 - command_output
 - delegation_packet
 
-Rerun count excludes reviewer-derived artifacts:
+Rerun count excludes:
 
 - review_evidence
 - structured_review
 
-Operator interpretation:
+Operator decision:
 
-- A high model-call count with zero verified outputs indicates wasted orchestration or failed verification.
-- A high rerun count indicates repeated task execution.
-- A high split count indicates reviewer disagreement.
-- A high insufficient count indicates review participation or parsing failures.
+- High model-call count with zero verified outputs indicates wasted orchestration or failed verification.
+- High rerun count indicates repeated task execution.
+- High split count indicates reviewer disagreement.
+- High insufficient count indicates review participation or parsing failures.
 
 ## Demo 15: Retrospective And Learning Memory
 
-Retrospective turns plan/context defects into learning rules and refreshes performance memory.
+Purpose: turn plan and context defects into future orchestration guidance.
 
 Run durable checks first:
 
     node $MawCli plan-check --deployment DP-001
     node $MawCli context-check --task T-001
 
-Then run retrospective:
+Run retrospective:
 
     node $MawCli retrospective --deployment DP-001
 
 Expected output:
 
     Retrospective RET-001
-    Path: artifacts/retrospectives/RET-001.md
+    Path: state/retrospectives/RET-001.md
     Learned Rules: LR-001
 
 Inspect learning memory:
 
     Get-Content state\learning_memory.json | ConvertFrom-Json | Select-Object -ExpandProperty learning_rules
 
-Active rules are injected into future orchestrator prompts when:
+Activation rule:
 
     confidence * times_seen >= learning_rule_threshold
 
@@ -529,15 +523,17 @@ Default threshold:
 
     1.6
 
-Operator response:
+Operator decision:
 
 - If a defect repeats, expect its rule to become active.
 - If a rule conflicts with the intent, fix the upstream plan shape or registry.
-- Do not delete learning rules casually; they are the orchestrator's memory of past failures.
+- Do not delete learning rules casually.
 
 ## Demo 16: Performance-Aware Routing
 
-Performance memory is stored on agents after performance update.
+Purpose: refresh agent routing memory from assignment and consensus outcomes.
+
+Run:
 
     node $MawCli performance update --deployment DP-001 --json
 
@@ -547,16 +543,16 @@ Inspect a populated agent:
       Where-Object { $_.performance -ne $null } |
       Select-Object agent_id, role, executor_type, performance
 
-The next orchestration input includes a performance suffix for agents with assignment history:
+Orchestration performance suffix pattern:
 
     assigned=4 completed=2 failed=2 reviews=1/3 dry_run_mismatches=1
 
 Performance gates:
 
 - LOW_REVIEW_PASS_RATE_FOR_RISK: high-risk task assigned to an agent below performance_review_pass_floor.
-- HIGH_FAILURE_RATE_AGENT: medium/high-risk task assigned to an agent above performance_failure_rate_ceiling.
+- HIGH_FAILURE_RATE_AGENT: medium or high-risk task assigned to an agent above performance_failure_rate_ceiling.
 
-Default thresholds in state/model_config.json:
+Default thresholds:
 
     {
       "performance_min_assignments": 3,
@@ -564,15 +560,19 @@ Default thresholds in state/model_config.json:
       "performance_failure_rate_ceiling": 0.5
     }
 
-Operator response:
+Operator decision:
 
 - For high-risk work, route to agents with better review pass history.
-- For medium/high-risk work, avoid agents with high task failure rates.
+- For medium and high-risk work, avoid agents with high task failure rates.
 - Cold-start agents are not gated until they meet the minimum assignment threshold.
 
 ## Demo 17: Orchestrator Pre-Flight Retries
 
-The orchestrator validates proposed plans before persistence. High-severity plan-check issues trigger retry.
+Purpose: understand why orchestration may retry or fail before persisting a plan.
+
+Run:
+
+    node $MawCli orchestrate --intent I-001
 
 Common retry triggers:
 
@@ -586,11 +586,7 @@ Common retry triggers:
 - LOW_REVIEW_PASS_RATE_FOR_RISK
 - HIGH_FAILURE_RATE_AGENT
 
-Run orchestration:
-
-    node $MawCli orchestrate --intent I-001
-
-Success after retry still persists the corrected plan:
+Success after retry:
 
     Created deployment DP-001 with tasks T-001, T-002.
 
@@ -603,11 +599,11 @@ Expected synthetic decision pattern:
     Revised orchestrator plan to address pre-flight violations
     Auto-revision after 1 retry(ies). Resolved triggers: DRY_RUN_DELIVERABLE.
 
-If retries are exhausted:
+Failure pattern:
 
     Orchestrator could not produce a valid plan after 2 retries. Final violations: DRY_RUN_DELIVERABLE.
 
-Operator response:
+Operator decision:
 
 1. Confirm the intent remains status: "new".
 2. Confirm no new deployment plan was persisted.
@@ -622,7 +618,7 @@ Useful inspections:
 
 ## Demo 18: Failed Deployment Recovery
 
-When a deployment fails, MAW records blockers and leaves state available for inspection.
+Purpose: recover from a failed run without losing audit trail.
 
 Inspect status:
 
@@ -635,11 +631,11 @@ Run targeted checks:
     node $MawCli plan-check --deployment DP-001
     node $MawCli context-check --task T-001
 
-Common causes and fixes:
+Common causes:
 
 | Cause | Fix |
 | --- | --- |
-| Missing approval | Run approval record with an exact approved scope |
+| Missing approval | Run approval record with exact approved scope |
 | Missing context file | Create the workspace-relative file or remove the path |
 | Dependency not ready | Run the dependency first |
 | Dependency artifact missing | Regenerate dependency output |
@@ -655,11 +651,15 @@ After fixing:
     node $MawCli retrospective --deployment DP-001
     node $MawCli performance update --deployment DP-001
 
-Rerun intentionally. Repeated primary deliverable artifacts are counted in rerun_count.
+Operator decision:
+
+- Rerun intentionally. Repeated primary deliverable artifacts are counted in rerun_count.
 
 ## Demo 19: Validation And Expected Legacy Failures
 
-Validation checks schema and cross-file references.
+Purpose: separate real state defects from expected historical legacy outcomes.
+
+Run:
 
     node $MawCli validate
 
@@ -671,37 +671,33 @@ Common issue pattern after legacy migration:
 
     TASK_REVIEW_MISSING: Task T-001 is completed but lacks passing load-bearing consensus
 
-Operator interpretation:
-
-- For old DP-001 style data, this can be expected historical state.
-- For a new deployment, this means a completed review-required task has not passed honest verification.
-
 Investigate:
 
     node $MawCli consensus compute --task T-001 --json
     node $MawCli score --deployment DP-001 --json
     Get-Content state\review_log.json
 
-Fix options:
+Operator decision:
 
-- Rerun the task and its structured reviewers.
-- Repair malformed structured review data only if you have valid evidence.
-- Accept the validation issue only when documenting historical legacy state.
+- For old DP-001 style data, this can be accepted as honest historical state.
+- For a new deployment, rerun the task and structured reviewers or repair malformed structured review data only when valid evidence exists.
 
 ## Demo 20: Operator Handoff Package
 
-Use this when handing the workspace to another operator or closing a run.
+Purpose: produce an evidence packet for another operator or for closing a run.
+
+Run:
 
     node $MawCli report > handoff-report.md
     node $MawCli score --deployment DP-001 --json > handoff-score.json
     node $MawCli plan-check --deployment DP-001 --json > handoff-plan-check.json
     node $MawCli validate > handoff-validate.txt
 
-If validation writes errors to stderr, capture both streams:
+Capture stderr too when needed:
 
     node $MawCli validate *> handoff-validate.txt
 
-The handoff should state:
+Handoff should state:
 
 - Intent ID and deployment ID.
 - Approval scope and approver.
@@ -712,6 +708,46 @@ The handoff should state:
 - Plan-check and context-check issues.
 - Learning rules created by retrospective.
 - Any expected validation failures.
+
+## Demo 21: Bootstrap Session Readiness
+
+Purpose: capture deterministic session-readiness before starting work.
+
+Run ordinary readiness:
+
+    node $MawCli bootstrap
+
+Run architecture readiness:
+
+    node $MawCli bootstrap --work-type architecture
+
+Persist packet:
+
+    node $MawCli bootstrap --work-type architecture --persist
+
+Machine-readable packet:
+
+    node $MawCli bootstrap --work-type architecture --json
+
+Posture interpretation:
+
+- normal: continue normally.
+- wide_scan: inspect posture_reasons and widen review before acting.
+- governed: higher-risk work promoted a wide_scan posture; treat exit 1 as a governance gate.
+- ask_human: stop and get human direction.
+
+Architecture metadata appears under:
+
+- continuity.architecture.entry_points
+- continuity.architecture.key_modules
+- ### Architecture Entry Points
+- ### Key Modules
+
+Operator decision:
+
+- Use --persist when the readiness packet should become an audit artifact.
+- Do not treat bootstrap as full static analysis.
+- If governed appears for architecture or risky work, inspect posture_reasons for the governed promotion marker and original wide_scan reasons.
 
 ## Situation Reference
 
@@ -740,14 +776,14 @@ Action:
 
 ### When plan-check Fails
 
-Check the issue code and recommended fix:
+Check:
 
     node $MawCli plan-check --deployment DP-001 --json
 
 Action:
 
 - High severity: do not approve.
-- Medium severity: decide whether the risk is acceptable, then document it.
+- Medium severity: decide whether the risk is acceptable and document it.
 - Re-run after repair.
 
 ### When run Fails
@@ -764,7 +800,7 @@ Action:
 - Re-run with --rerun.
 - Score and run retrospective after recovery.
 
-### When Consensus Is insufficient
+### When Consensus Is Insufficient
 
 Check:
 
@@ -785,9 +821,9 @@ Action:
 - Increase model output token limit if truncation recurs.
 - Confirm reviewer personas are present for the risk tier.
 
-### When Consensus Is split
+### When Consensus Is Split
 
-Check per-criterion dissent:
+Check:
 
     node $MawCli consensus compute --task T-001 --json
 
@@ -820,11 +856,30 @@ Action:
 - Reduce avoidable reruns.
 - Fix context defects before running dependent tasks.
 
+### When Bootstrap Escalates
+
+Check:
+
+    node $MawCli bootstrap --work-type ordinary --json
+    node $MawCli bootstrap --work-type architecture --json
+
+Action:
+
+- Read posture_reasons first.
+- For wide_scan, inspect the source-truth or workspace-surface trigger.
+- For governed, identify the original wide_scan triggers plus the governed promotion reason.
+- For ask_human, stop and get direction before acting.
+
 ## Completion Checklist
 
-A run is operationally complete when the operator has run:
+Before approving:
 
+    node $MawCli bootstrap --work-type ordinary
     node $MawCli plan-check --deployment DP-001
+    node $MawCli context-check --task T-001
+
+Before accepting a run:
+
     node $MawCli run --deployment DP-001
     node $MawCli score --deployment DP-001
     node $MawCli retrospective --deployment DP-001
@@ -832,10 +887,10 @@ A run is operationally complete when the operator has run:
     node $MawCli validate
     node $MawCli report
 
-And has confirmed:
+Confirm:
 
 - Approval was recorded before execution.
-- Failed tasks are either fixed or explicitly accepted.
+- Failed tasks are fixed or explicitly accepted.
 - Review-required deliverables have load-bearing consensus.
 - Rubber-stamp reviews are not counted as verified.
 - Score reflects expected reruns and interventions.
