@@ -28,6 +28,12 @@ Install, build, initialize, and validate:
     node dist/src/index.js init
     node dist/src/index.js validate
 
+Orient before choosing the next operation:
+
+    node dist/src/index.js status
+    node dist/src/index.js next
+    node dist/src/index.js doctor
+
 Normal workflow:
 
     node dist/src/index.js intent create --text "Build a verified demo artifact." --risk medium
@@ -117,6 +123,9 @@ Commands that do not require a model key:
 - context-check
 - retrospective, unless it first needs to compute missing score state
 - performance update
+- status
+- next
+- doctor
 - report
 - bootstrap
 
@@ -194,6 +203,7 @@ State files:
 - state/learning_memory.json
 - state/retrospective_index.json
 - state/performance_ledger.json
+- state/operator_experience.json
 - state/prompt_contract.md
 - state/decision_log.md
 
@@ -232,9 +242,65 @@ Default agents in a fresh workspace:
 | score | --deployment | --json | state/workflow_score.json | no |
 | retrospective | --deployment | --json | retrospectives, learning memory, performance ledger | no |
 | performance update | --deployment | --json | performance ledger and agent registry | no |
+| status | none | none | none | no |
+| next | none | --reason | none | no |
+| doctor | none | none | none | no |
 | validate | none | none | may migrate legacy reviews | no |
 | report | none | none | none | no |
 | bootstrap | none | --json, --work-type, --persist | nothing by default; state/bootstrap only with --persist | no |
+| scaffold agent | --id, --role, --executor | --model-tier, --model, --max-cost, --allow-tool, --allow-command | state/agent_registry.json | no |
+| scaffold reviewer | --id, --persona | --model-tier, --model, --max-cost | state/agent_registry.json | no |
+| scaffold protocol | --name | --title, --body | protocols/<name>.md | no |
+| scaffold command | --agent-id, --command | --role, --model-tier | state/agent_registry.json | no |
+| operator metrics | none | none | none | no |
+
+## Transition Guidance
+
+Successful human-readable commands now finish with operator transition guidance after their command-specific result:
+
+    Workflow State: planning_needed
+    Next: maw orchestrate --intent I-001
+    Reason: active intent is new and has no deployment.
+
+The guidance tells you the resulting workflow state, the next safe command, and why that command is recommended. This applies to init, intent create, orchestrate, approval record, review record, consensus compute, migrate, run, validate success, score, plan-check, context-check, retrospective, performance update, and bootstrap Markdown output.
+
+Machine-readable --json output remains pure JSON and does not include transition guidance. report remains a handoff payload; use status or next as its navigation companion.
+
+## Structured Recovery Packets
+
+Expected recoverable failures print a structured recovery packet instead of a bare error. The packet uses these labels:
+
+- Error
+- Why
+- State Safety
+- Corrective Command
+- Then
+
+Unknown or unclassified failures still print the concise error message so MAW does not invent unsafe repair advice.
+
+Missing approval example:
+
+    Error: Deployment DP-001 requires explicit approval before execution.
+    Why: DP-001 requires approval and no approved approval record exists.
+    State Safety: safe; execution did not start.
+    Corrective Command: maw plan-check --deployment DP-001
+    Then: maw approval record --deployment DP-001 --approver "operator" --scope "Run DP-001 after plan-check review."
+
+Missing API key example:
+
+    Error: Missing OpenAI API key environment variable: OPENAI_API_KEY
+    Why: model-backed commands require the configured environment variable.
+    State Safety: safe; the model request did not run.
+    Corrective Command: $env:OPENAI_API_KEY = "sk-..."
+    Then: maw next
+
+Local command execute-gate example:
+
+    Error: Local command task T-001 requires --execute.
+    Why: local command execution is gated by an explicit operator flag.
+    State Safety: safe; local command did not run.
+    Corrective Command: maw run --deployment DP-001 --execute
+    Then: maw status
 
 ## Command Reference
 
@@ -257,6 +323,132 @@ State effects: none.
 Exit behavior:
 
 - Help and version exit successfully.
+
+### status
+
+Purpose: summarize where the operator is in the workflow and what command is safe to run next.
+
+Command:
+
+    node dist/src/index.js status
+
+Inputs: none.
+
+Reads:
+
+- Existing workflow state files.
+
+Writes: none.
+
+Does not:
+
+- Run models.
+- Run validateWorkspace.
+- Run bootstrap.
+- Repair or migrate state.
+
+Output includes:
+
+- Workflow state.
+- Active intent, deployment, and task, or none.
+- Readiness flags using yes and no.
+- Blockers.
+- Stale conditions.
+- Risky conditions.
+- Next command.
+- Reason for the next command.
+
+Use when:
+
+- You need orientation without opening JSON files.
+- You are unsure whether to plan, check, approve, run, verify, score, repair, or report.
+
+### next
+
+Purpose: print the single recommended next command.
+
+Command:
+
+    node dist/src/index.js next
+    node dist/src/index.js next --reason
+
+Inputs:
+
+- --reason: optional. Also prints the short reason for the recommendation.
+
+Reads:
+
+- Existing workflow state files.
+
+Writes: none.
+
+Output:
+
+- Default mode prints exactly one command.
+- --reason prints the command and one Reason line.
+
+Use when:
+
+- You want MAW to reduce workflow uncertainty to one action.
+- You are scripting a prompt or handoff that needs the next safe command.
+
+### doctor
+
+Purpose: diagnose setup, state, environment, configuration, and workflow issues without modifying state.
+
+Command:
+
+    node dist/src/index.js doctor
+
+Inputs: none.
+
+Reads:
+
+- Existing workflow state files.
+- state/model_config.json when present and parseable.
+
+Writes: none.
+
+Does not:
+
+- Run models.
+- Run validateWorkspace.
+- Run bootstrap.
+- Repair or migrate state.
+- Execute deployment commands.
+
+Findings can include:
+
+- Uninitialized workspace.
+- Invalid state files.
+- Missing model API key environment variable.
+- Missing or insufficient reviewer personas for high-risk reviewable tasks.
+- Local-command tasks needing --execute.
+- Local-command tasks whose command is not allowlisted.
+- Failed or blocked tasks.
+- Chat messages requiring action.
+- Current high-severity plan-check failures.
+- Context-check failures.
+- Missing approval.
+- Missing verification.
+- Missing or stale score.
+- Missing retrospective.
+- Missing performance ledger entries.
+
+Output includes:
+
+- Doctor Summary.
+- Workflow State.
+- Findings with repair guidance.
+- State Safety.
+- Next command.
+- Reason.
+
+Use when:
+
+- status or next points to maw doctor.
+- A workflow is blocked or failed.
+- You need a safe repair path before continuing.
 
 ### init
 
@@ -283,6 +475,9 @@ Does not:
 Expected output:
 
     Initialized multi-agent workflow workspace.
+    Workflow State: idle
+    Next: maw intent create --text "Describe the work"
+    Reason: no active intent exists.
 
 Use when:
 
@@ -318,9 +513,10 @@ Writes:
 
 - Appends an intent to state/intent_queue.json.
 
-Returns:
+Human-readable output:
 
-- The new intent ID, such as I-001.
+- Created intent I-001.
+- Transition guidance with the current workflow state and next command.
 
 Operator notes:
 
@@ -395,6 +591,9 @@ Common high-severity pre-flight codes:
 Expected output:
 
     Created deployment DP-001 with tasks T-001, T-002.
+    Workflow State: approval_precheck_needed
+    Next: maw plan-check --deployment DP-001
+    Reason: deployment is proposed and needs a current plan check before approval.
 
 Failure handling:
 
@@ -433,6 +632,13 @@ Writes:
 Exit behavior:
 
 - Sets nonzero exit code if any issue has severity high.
+
+Human-readable output:
+
+- Plan Check PC-001: pass or fail.
+- Any issues with recommended fixes.
+- Transition guidance with the current workflow state and next command.
+- --json output remains the raw PlanCheck JSON.
 
 Use when:
 
@@ -484,9 +690,10 @@ Status effects:
 - approved sets deployment status to approved and fills approved_at.
 - rejected sets deployment status to blocked and clears approved_at.
 
-Returns:
+Human-readable output:
 
-- Approval ID such as AP-001.
+- Recorded approval AP-001.
+- Transition guidance with the current workflow state and next command.
 
 ### run
 
@@ -548,6 +755,7 @@ Exit behavior:
 
 - Prints completed task IDs.
 - Prints failed task IDs if any.
+- Prints transition guidance with the resulting workflow state and next command.
 - Sets nonzero exit code when any task failed.
 
 Common blockers:
@@ -587,6 +795,13 @@ Writes:
 Exit behavior:
 
 - Sets nonzero exit code if any issue has severity high.
+
+Human-readable output:
+
+- Context Check CC-001: pass or fail.
+- Any issues with recommended fixes.
+- Transition guidance with the current workflow state and next command.
+- --json output remains the raw ContextCheck JSON.
 
 Checks:
 
@@ -628,9 +843,10 @@ Important behavior:
 - Manual CLI reviews are not load-bearing for scoring.
 - Use automated structured reviews from run for evidence-backed verification.
 
-Returns:
+Human-readable output:
 
-- Review ID such as R-001.
+- Recorded review R-001.
+- Transition guidance with the current workflow state and next command.
 
 ### consensus compute
 
@@ -672,6 +888,12 @@ Use when:
 - Refreshing migrated legacy tasks after code updates.
 - Inspecting why a review-required task is not verified.
 
+Human-readable output:
+
+- Consensus C-001: pass, fail, split, insufficient, or unverifiable.
+- Transition guidance with the current workflow state and next command.
+- --json output remains the raw consensus record.
+
 ### migrate
 
 Purpose: convert legacy pre-v0.3 flat reviews to structured abstentions.
@@ -701,6 +923,11 @@ Idempotency:
 Expected consequence:
 
 - Legacy DP-001 style data will score zero verified_useful_outputs after migration until real structured reviews exist.
+
+Human-readable output:
+
+- Migrated N legacy reviews.
+- Transition guidance with the current workflow state and next command.
 
 ### score
 
@@ -755,6 +982,13 @@ Rerun count excludes:
 - review_evidence
 - structured_review
 
+Human-readable output:
+
+- Workflow Score WS-001.
+- Deployment ID and score fields.
+- Transition guidance with the current workflow state and next command.
+- --json output remains the raw workflow score.
+
 ### retrospective
 
 Purpose: generate a deterministic retrospective and update learning memory.
@@ -794,6 +1028,13 @@ Learning rule sources:
 - High and medium context-check issues.
 - Repeated blockers in chat.
 - Score and rerun patterns.
+
+Human-readable output:
+
+- Retrospective RET-001.
+- Retrospective path and learned rule IDs.
+- Transition guidance with the current workflow state and next command.
+- --json output remains the raw retrospective record.
 
 ### performance update
 
@@ -835,6 +1076,12 @@ Consensus-backed review outcome rules:
 - Load-bearing consensus fail, split, or insufficient increments review_failures.
 - No load-bearing consensus leaves both counters unchanged for that task.
 
+Human-readable output:
+
+- Per-agent performance summaries when agents have performance state.
+- Transition guidance with the current workflow state and next command.
+- --json output remains the raw agent projection.
+
 ### validate
 
 Purpose: validate workflow state consistency.
@@ -861,7 +1108,7 @@ Writes:
 
 Exit behavior:
 
-- Prints Workflow state is valid. when no issues remain.
+- Prints Workflow state is valid. and transition guidance when no issues remain.
 - Sets nonzero exit code when validation issues remain.
 
 Common expected historical issue:
@@ -896,6 +1143,11 @@ Use when:
 - Inspecting current deployment, task, approval, review, and metrics state.
 - Getting a quick view before repair work.
 
+Navigation note:
+
+- report remains a handoff payload and does not append transition guidance.
+- Run status or next when you need the current navigation recommendation after reading a report.
+
 ### bootstrap
 
 Purpose: generate a deterministic session-readiness packet that pairs continuity with counter-context and posture.
@@ -928,6 +1180,12 @@ Writes:
 
 - Default mode: nothing.
 - --persist only: state/bootstrap/BS-NNN.md, state/bootstrap/BS-NNN.json, and state/bootstrap/index.json.
+
+Human-readable output:
+
+- Markdown bootstrap packet.
+- Transition guidance after the packet.
+- --json output remains the raw BootstrapPacket JSON.
 
 Does not:
 
@@ -964,6 +1222,303 @@ Operator notes:
 - untracked_capped means the bounded untracked-entry probe was truncated.
 - Bootstrap surfaces not_inspected in JSON and ### Not Inspected in Markdown.
 - Elevated posture renders Counter-Context before Continuity so warnings are visible first.
+
+### scaffold
+
+Purpose: add sanctioned extensions through validated scaffold paths instead of hand-editing JSON or generating CLI source.
+
+The scaffold group has four subcommands:
+
+- scaffold agent
+- scaffold reviewer
+- scaffold protocol
+- scaffold command
+
+All scaffold commands share these guarantees:
+
+- Inputs are validated before any file is written.
+- Persisted artifacts are parsed by AgentRegistrySchema or written under protocols/.
+- Default permissions for new agents are all false.
+- Path traversal in protocol names is rejected.
+- Duplicate agent IDs and existing protocol files are refused. There is no --replace flag in this release.
+- Output uses a stable shape: summary, Changed list, Rollback list, optional Note block, Next, and Reason.
+- No model or OpenAI calls.
+- No validateWorkspace call.
+- Mutations are limited to state/agent_registry.json or protocols/<safe-name>.md.
+
+scaffold command intentionally does not generate new MAW CLI source commands. It scaffolds a local-command execution profile in state/agent_registry.json. Local execution still requires a deployment approval and the --execute flag on run.
+
+#### scaffold agent
+
+Purpose: register a new model_agent, local_command, or dry_run agent in state/agent_registry.json.
+
+Command:
+
+    node dist/src/index.js scaffold agent --id researcher_2 --role "Research Agent" --executor model_agent --model-tier mid
+
+Inputs:
+
+- --id <id>: required. Letters, digits, underscore, hyphen; must start with a letter.
+- --role <role>: required. Reviewer roles must use scaffold reviewer instead.
+- --executor <executor>: required. One of model_agent, local_command, dry_run.
+- --model-tier <tier>: optional. low, mid, or high. Default mid; default low for local_command.
+- --model <model>: optional. Explicit model name.
+- --max-cost <amount>: optional nonnegative number. Default 1 for model_agent, 0 otherwise.
+- --allow-tool <tool...>: optional repeatable values.
+- --allow-command <command...>: optional repeatable values. Valid only for the local_command executor; passing --allow-command with any other executor refuses the scaffold.
+
+Reads:
+
+- state/agent_registry.json
+
+Writes:
+
+- Appends one agent to state/agent_registry.json.
+
+Refusal behavior:
+
+- Existing agent_id refuses with a clear error and leaves the registry unchanged.
+- Reviewer roles refuse and direct the operator to scaffold reviewer.
+- Allow-command values are validated as bare executable names for local_command agents; unsafe values refuse the entire scaffold.
+- Allow-command paired with a non-local-command executor refuses the scaffold without modification.
+
+Output shape:
+
+    Scaffolded agent researcher_2.
+
+    Changed:
+    - state/agent_registry.json
+
+    Rollback:
+    - Remove agent researcher_2 from state/agent_registry.json, then run maw doctor.
+
+    Next: maw doctor
+    Reason: verify scaffolded extension before routing work.
+
+#### scaffold reviewer
+
+Purpose: register a Reviewer Agent with a required reviewer_persona.
+
+Command:
+
+    node dist/src/index.js scaffold reviewer --id reviewer_adversarial --persona adversarial
+
+Inputs:
+
+- --id <id>: required. Same safe-id rules as scaffold agent.
+- --persona <persona>: required. One of default, skeptical, completeness, rigor, adversarial.
+- --model-tier <tier>: optional. Default high.
+- --model <model>: optional.
+- --max-cost <amount>: optional nonnegative number. Default 1.
+
+Reads:
+
+- state/agent_registry.json
+
+Writes:
+
+- Appends a Reviewer Agent (executor_type model_agent) to state/agent_registry.json.
+
+Refusal behavior:
+
+- Existing agent_id refuses with a clear error and leaves the registry unchanged.
+
+Output shape:
+
+    Scaffolded reviewer reviewer_adversarial with persona adversarial.
+
+    Changed:
+    - state/agent_registry.json
+
+    Rollback:
+    - Remove agent reviewer_adversarial from state/agent_registry.json, then run maw doctor.
+
+    Next: maw doctor
+    Reason: verify scaffolded reviewer before high-risk review work.
+
+#### scaffold protocol
+
+Purpose: create a structured protocol document under protocols/.
+
+Command:
+
+    node dist/src/index.js scaffold protocol --name release-checklist --title "Release Checklist"
+
+Inputs:
+
+- --name <name>: required. Lowercase letters, digits, and hyphens only. Must not start or end with a hyphen, contain whitespace, slash, backslash, or dot-dot.
+- --title <title>: optional. Defaults to title-cased name.
+- --body <body>: optional. Becomes the Purpose section content; otherwise a placeholder is used.
+
+Reads:
+
+- The target file under protocols/ to confirm it does not already exist.
+
+Writes:
+
+- protocols/<name>.md with sections: Purpose, Required Inputs, Steps, Acceptance Criteria, Rollback.
+
+Refusal behavior:
+
+- Unsafe names refuse with a clear error and write nothing.
+- Existing protocol files refuse without overwriting.
+
+Output shape:
+
+    Scaffolded protocol protocols/release-checklist.md.
+
+    Changed:
+    - protocols/release-checklist.md
+
+    Rollback:
+    - Delete protocols/release-checklist.md, then run maw status.
+
+    Next: maw status
+    Reason: verify scaffolded protocol before referencing it from a task.
+
+#### scaffold command
+
+Purpose: scaffold a sanctioned local-command execution profile in state/agent_registry.json.
+
+This subcommand does not generate new MAW CLI source commands. The intent is to add a bare executable to a local_command agent's command_allowlist so future plans can route to it under deployment approval and --execute.
+
+Command:
+
+    node dist/src/index.js scaffold command --agent-id shell_node --command node --role "Shell Agent"
+
+Inputs:
+
+- --agent-id <id>: required. Same safe-id rules as scaffold agent.
+- --command <command>: required. Bare executable name. Letters, digits, underscore, hyphen, and dot only. Must start with a letter or digit. Whitespace, slashes, backslashes, dot-dot, and shell separators (semicolon, ampersand, pipe, redirection, quotes, grave accent, dollar) refuse.
+- --role <role>: optional. Default Shell Agent. Used only when creating a new agent.
+- --model-tier <tier>: optional. Default low. Used only when creating a new agent.
+
+Reads:
+
+- state/agent_registry.json
+
+Writes:
+
+- If the agent does not exist: appends a new local_command agent with the command on its allowlist.
+- If the agent exists and is local_command: appends the command to command_allowlist if missing. Other fields stay stable.
+- If the agent exists but is not local_command: refuses without modification.
+
+Refusal behavior:
+
+- Unsafe command names refuse and leave the registry unchanged.
+- Non-local-command existing agents refuse and leave the registry unchanged.
+
+Output shape:
+
+    Scaffolded command profile shell_node for node.
+
+    Changed:
+    - state/agent_registry.json
+
+    Rollback:
+    - Remove node from shell_node command_allowlist, or remove agent shell_node entirely if it was created only for this command.
+
+    Note:
+    - Local execution still requires deployment approval and maw run --execute.
+
+    Next: maw doctor
+    Reason: verify command policy before approving local execution.
+
+When the command is already on the existing agent allowlist, the summary changes to "Command <name> is already on <agent> allowlist; no change." but Changed still records state/agent_registry.json since the file is rewritten with the same contents.
+
+### operator metrics
+
+Purpose: print the local operator-experience metrics report.
+
+Command:
+
+    node dist/src/index.js operator metrics
+
+Inputs: none.
+
+Reads:
+
+- state/operator_experience.json
+
+Writes: none. The metrics command does not record itself, so reading metrics never changes metrics.
+
+Does not:
+
+- Run models.
+- Run validateWorkspace.
+- Run bootstrap.
+- Repair or migrate state.
+- Execute any workflow command.
+
+Output:
+
+    Operator Experience Metrics
+    Command Attempts: <integer>
+    Next-Step Coverage: A/B (rate)
+    Invalid Command Rate: A/B (rate)
+    Help Invocation Rate: A/B (rate)
+    Successful Error Recovery Rate: A/B (rate)
+    Extension Success Rate: A/B (rate)
+    Time To First Successful Workflow: n/a or duration
+    Commands Before Successful Deployment: n/a or N
+
+Use when:
+
+- You want to inspect operator friction signals after a session.
+- A reviewer wants to confirm metric values without inspecting raw JSON.
+
+## Operator Experience Metrics
+
+MAW records a small, local operator-experience metrics record at the CLI entry point. The goal is to measure operator friction, not generic activity.
+
+State file:
+
+- state/operator_experience.json
+
+Boundaries:
+
+- Local only. No external telemetry, no network calls, no analytics endpoints.
+- No raw free-form user text is stored. Metrics never persist intent text, approval scope, prompt text, review text, protocol body, or command arguments.
+- Stored fields are limited to normalized command family names (such as "init", "intent create", "scaffold reviewer", "operator metrics"), outcomes, timestamps, workflow state values, and safe workflow IDs already used elsewhere in MAW state.
+- The event log is bounded. The cap is 500 events; the oldest entries are trimmed when the cap is exceeded. first_successful_deployment_at and first_complete_workflow_at are preserved across trim.
+- Metrics recording is best-effort. If the workspace is uninitialized, state is invalid, or the metrics file cannot be written, the CLI command result still stands and no metrics error is shown to the operator.
+
+Recorded per-event fields:
+
+- event_id, such as OX-001
+- created_at
+- command family
+- outcome: success, failure, invalid, or help
+- next_step_applicable
+- next_step_present
+- recoverable_error
+- recovery_success
+- extension_command
+- workflow_state_after when available
+
+Top-level fields:
+
+- started_at, updated_at
+- pending_recovery: corrective and next command families captured when a recoverable error renders a recovery packet
+- first_successful_deployment_at: set the first time a successful run leaves workflow state past execution (verification_needed, scoring_needed, retrospective_needed, performance_update_needed, or complete)
+- first_complete_workflow_at: set the first time any event sees workflow_state_after equal to complete
+
+Metric definitions:
+
+- Next-step coverage: events with next_step_present divided by events with next_step_applicable.
+- Invalid command rate: invalid events divided by total command attempts.
+- Help invocation rate: help events divided by total command attempts.
+- Successful error recovery rate: recovery_success events divided by recoverable_error events.
+- Extension success rate: successful extension events divided by total extension events.
+- Time to first successful workflow: duration from started_at to first_complete_workflow_at, or n/a.
+- Commands before successful deployment: count of recorded events before first_successful_deployment_at, or n/a.
+
+Operator notes:
+
+- Metrics are friction signals, not productivity scores. A high invalid-command rate or low next-step coverage points at navigation problems, not at the operator.
+- The operator metrics command itself is intentionally excluded from the event log so reading metrics never changes metrics.
+- To reset metrics, delete state/operator_experience.json. Init recreates the file with empty defaults.
+- Workflow command writes (such as state/agent_registry.json or state/deployment_plan.json) are workflow state. state/operator_experience.json is metadata about CLI usage and is separate from workflow audit state.
 
 ## Configuration Reference
 

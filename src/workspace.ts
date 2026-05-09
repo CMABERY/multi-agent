@@ -1,6 +1,7 @@
 import { access, mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { ensureDir, saveJson, saveText } from "./storage.js";
+import { defaultOperatorExperience } from "./operatorExperience.js";
+import { ensureDir, nowIso, saveJson, saveText } from "./storage.js";
 
 async function writeIfMissing(root: string, relativePath: string, content: string): Promise<void> {
   const path = join(root, relativePath);
@@ -58,6 +59,7 @@ export async function initWorkspace(root: string): Promise<void> {
   await saveJsonIfMissing(root, "state/learning_memory.json", { learning_rules: [] });
   await saveJsonIfMissing(root, "state/retrospective_index.json", { retrospectives: [] });
   await saveJsonIfMissing(root, "state/performance_ledger.json", { entries: [] });
+  await saveJsonIfMissing(root, "state/operator_experience.json", defaultOperatorExperience(nowIso()));
   await saveJsonIfMissing(root, "artifacts/artifact_index.json", { artifacts: [] });
 
   await writeIfMissing(

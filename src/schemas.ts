@@ -585,6 +585,36 @@ export const BootstrapIndexSchema = z.object({
   bootstraps: z.array(BootstrapIndexEntrySchema)
 });
 
+export const OperatorEventOutcomeSchema = z.enum(["success", "failure", "invalid", "help"]);
+
+export const OperatorEventSchema = z.object({
+  event_id: z.string().regex(/^OX-\d{3,}$/),
+  created_at: z.string(),
+  command: z.string().min(1),
+  outcome: OperatorEventOutcomeSchema,
+  next_step_applicable: z.boolean(),
+  next_step_present: z.boolean(),
+  recoverable_error: z.boolean(),
+  recovery_success: z.boolean().default(false),
+  extension_command: z.boolean(),
+  workflow_state_after: z.string().optional()
+});
+
+export const OperatorPendingRecoverySchema = z.object({
+  corrective_family: z.string().optional(),
+  next_family: z.string().optional(),
+  recorded_at: z.string()
+});
+
+export const OperatorExperienceSchema = z.object({
+  started_at: z.string(),
+  updated_at: z.string(),
+  events: z.array(OperatorEventSchema).default([]),
+  pending_recovery: OperatorPendingRecoverySchema.nullable().default(null),
+  first_successful_deployment_at: z.string().nullable().default(null),
+  first_complete_workflow_at: z.string().nullable().default(null)
+});
+
 export type Agent = z.infer<typeof AgentSchema>;
 export type AgentRegistry = z.infer<typeof AgentRegistrySchema>;
 export type Intent = z.infer<typeof IntentSchema>;
@@ -635,3 +665,7 @@ export type BootstrapCounterContext = z.infer<typeof BootstrapCounterContextSche
 export type BootstrapPacket = z.infer<typeof BootstrapPacketSchema>;
 export type BootstrapIndexEntry = z.infer<typeof BootstrapIndexEntrySchema>;
 export type BootstrapIndex = z.infer<typeof BootstrapIndexSchema>;
+export type OperatorEventOutcome = z.infer<typeof OperatorEventOutcomeSchema>;
+export type OperatorEvent = z.infer<typeof OperatorEventSchema>;
+export type OperatorPendingRecovery = z.infer<typeof OperatorPendingRecoverySchema>;
+export type OperatorExperience = z.infer<typeof OperatorExperienceSchema>;
