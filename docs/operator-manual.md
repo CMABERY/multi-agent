@@ -232,6 +232,7 @@ Default agents in a fresh workspace:
 | init | none | none | default workspace files | no |
 | intent create | --text | --constraint, --risk, --budget | state/intent_queue.json | no |
 | orchestrate | none | --intent (defaults to active), --json | prompt contract, tasks, deployment, decisions, metrics | yes |
+| plan | --text | --constraint, --risk, --budget, --json | intent, prompt contract, tasks, deployment, decisions, metrics, plan-check | yes |
 | plan-check | none | --deployment (defaults to active), --json | state/plan_checks.json | no |
 | approval record | --approver, --scope | --deployment (defaults to active), --decision | approvals and deployment status | no |
 | run | none | --deployment (defaults to active), --execute, --rerun | task and deployment state, artifacts, metrics, reviews, consensus | depends on tasks |
@@ -622,6 +623,74 @@ Failure handling:
 - Unknown agent selected by model: adjust registry or rerun orchestration.
 - Max retries exhausted: inspect the final violation codes in the thrown error.
 - Already-orchestrated intent: orchestrate emits a recovery packet of the form "Intent I-001 cannot be re-orchestrated (status: planned). Existing deployments: DP-001." The deployment-plan check runs before the status check, so partial-write recovery (deployment persisted but intent_queue not yet updated) still refuses. Inspect status, then create a new intent if more work is needed.
+
+### plan
+
+Purpose: chain intent create, orchestrate, and plan-check in one command, stopping at the approval gate. Useful when the operator already knows the work needs orchestration plus a plan check before approval.
+
+Command:
+
+    node dist/src/index.js plan --text "Build a verified demo artifact." --risk medium
+    node dist/src/index.js plan --text "..." --json
+
+Inputs:
+
+- --text <text>: required. User request or operating objective.
+- --constraint <constraint...>: optional. Adds one or more constraints.
+- --risk <risk>: optional. One of low, medium, or high. Defaults to medium.
+- --budget <budget>: optional. Free-text budget description.
+- --json: optional. Prints the full AutoPlanResult JSON.
+
+Reads:
+
+- Same as intent create, orchestrate, and plan-check combined.
+
+Writes:
+
+- state/intent_queue.json (new intent, status planned after orchestrate)
+- state/prompt_contract.md
+- state/task_board.json
+- state/deployment_plan.json
+- state/decision_log.md
+- state/metrics.json
+- state/plan_checks.json
+
+Does not write:
+
+- state/approvals.json
+- artifacts under artifacts/runs/
+- state/workflow_score.json
+- state/retrospective_index.json
+- state/performance_ledger.json
+
+The chain stops at the approval gate. Approval, run, score, retrospective, and performance update remain explicit operator actions.
+
+Model behavior:
+
+- plan calls the orchestrator model exactly once per attempt, with the same retry semantics as orchestrate.
+- plan-check after orchestrate is deterministic and does not call a model.
+
+Failure handling:
+
+- intent create succeeds first; if orchestrate fails, the intent stays in status new with no deployment. Re-run maw orchestrate (which now defaults to the active intent) instead of re-running plan, otherwise plan would create a new intent.
+- If orchestrate refuses (already-planned intent or existing deployment), the recovery packet routes the operator at maw status.
+- If plan-check returns high-severity issues after a successful orchestrate, plan exits 1 and prints the issues with their recommended fixes. The deployment is still persisted.
+
+Expected output (Markdown):
+
+    Created intent I-001.
+    Created deployment DP-001 with tasks T-001, T-002.
+    Plan Check PC-001: pass
+
+    Workflow State: approval_needed
+    Next: maw approval record --deployment DP-001 --approver "operator" --scope "Run DP-001 after plan-check review."
+    Reason: current plan check passes and deployment is not approved.
+
+Operator notes:
+
+- plan is a sugar command. It does not change the contract of intent create, orchestrate, or plan-check; it only chains them.
+- plan never auto-approves. Approval remains the explicit gate for execution.
+- For finer control, use intent create, orchestrate, and plan-check separately.
 
 ### plan-check
 

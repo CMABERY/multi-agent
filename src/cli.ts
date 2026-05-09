@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { recordApproval } from "./approvals.js";
+import { renderAutoPlanResult, runAutoPlan } from "./autoPlan.js";
 import { postureExitCode, runBootstrap } from "./bootstrap.js";
 import { computeConsensus } from "./consensus.js";
 import { runContextCheck } from "./contextCheck.js";
@@ -99,6 +100,40 @@ export function createCli(root = process.cwd()): Command {
       console.log("Created deployment " + (result.deployment_id) + " with tasks " + (result.task_ids.join(", ")) + ".");
       await printTransitionGuidance(root);
     });
+
+  program
+    .command("plan")
+    .requiredOption("--text <text>", "User task or intent")
+    .option("--constraint <constraint...>", "Constraint to add")
+    .option("--risk <risk>", "Risk level: low, medium, high", "medium")
+    .option("--budget <budget>", "Budget description")
+    .option("--json", "Print machine-readable JSON")
+    .description(
+      "Create an intent and chain orchestrate plus plan-check, stopping at the approval gate"
+    )
+    .action(
+      async (options: {
+        text: string;
+        constraint?: string[];
+        risk: "low" | "medium" | "high";
+        budget?: string;
+        json?: boolean;
+      }) => {
+        const result = await runAutoPlan(root, {
+          text: options.text,
+          constraints: options.constraint ?? [],
+          riskLevel: options.risk,
+          budget: options.budget
+        });
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+        } else {
+          console.log(renderAutoPlanResult(result));
+          await printTransitionGuidance(root);
+        }
+        if (result.plan_check_high_severity) process.exitCode = 1;
+      }
+    );
 
   const approval = program.command("approval").description("Record human approval decisions");
   approval

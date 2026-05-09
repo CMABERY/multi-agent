@@ -34,6 +34,7 @@ const KNOWN_TOP_LEVEL_COMMANDS = new Set([
   "doctor",
   "intent",
   "orchestrate",
+  "plan",
   "plan-check",
   "approval",
   "run",

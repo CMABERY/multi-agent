@@ -259,6 +259,7 @@ describe("classifyOperatorCommand", () => {
     expect(classifyOperatorCommand(["node", "maw", "intent", "create", "--text", "x"]).family).toBe(
       "intent create"
     );
+    expect(classifyOperatorCommand(["node", "maw", "plan", "--text", "x"]).family).toBe("plan");
     expect(classifyOperatorCommand(["node", "maw", "scaffold", "agent", "--id", "a"]).family).toBe(
       "scaffold agent"
     );
