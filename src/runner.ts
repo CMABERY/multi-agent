@@ -33,6 +33,26 @@ import {
 } from "./schemas.js";
 import { loadJson, nowIso, saveJson, saveText } from "./storage.js";
 
+class HaltError extends Error {
+  constructor(public readonly reason: string) {
+    super("Model halted task with reason: " + reason);
+    this.name = "HaltError";
+  }
+}
+
+function detectHaltSignal(text: string): { reason: string } | null {
+  const stripped = text.replace(/^[\s\n]+/, "");
+  if (!stripped.startsWith("HALT:")) return null;
+  const newlineIndex = stripped.indexOf("\n");
+  const firstLine = newlineIndex === -1 ? stripped : stripped.slice(0, newlineIndex);
+  const match = /^HALT:\s+(.+)$/.exec(firstLine);
+  const captured = match?.[1];
+  if (!captured) return null;
+  const reason = captured.trim();
+  if (!reason) return null;
+  return { reason };
+}
+
 const ReviewerOutputSchema = z.object({
   reviewer_persona: z.enum(["default", "skeptical", "completeness", "rigor", "adversarial"]).optional(),
   status: z.enum(["pass", "fail", "abstain"]).optional(),
@@ -106,6 +126,15 @@ export async function runDeployment(
       }
       completed.push(task.task_id);
     } catch (error) {
+      if (error instanceof HaltError) {
+        await markTask(board, root, task, "blocked", "HALT: " + error.reason);
+        await addChatHalt(root, task.task_id, error.reason);
+        failed.push(task.task_id);
+        plan.status = "failed";
+        plan.updated_at = nowIso();
+        await saveJson(root, "state/deployment_plan.json", plans);
+        continue;
+      }
       await markTask(board, root, task, "failed", error instanceof Error ? error.message : String(error));
       await addChatBlocker(root, task.task_id, error instanceof Error ? error.message : String(error));
       failed.push(task.task_id);
@@ -225,6 +254,16 @@ async function runModelAgent(
       response_chars: responseText.length
     });
     throw new Error("Model response truncated at max_output_tokens (" + (config.max_output_tokens) + ").");
+  }
+  const halt = detectHaltSignal(responseText);
+  if (halt) {
+    await addArtifact(root, {
+      taskId: task.task_id,
+      path: "" + (runDir) + "/response_output.md",
+      type: "model_halt",
+      description: "Model HALT for " + (task.task_id) + ": " + halt.reason
+    });
+    throw new HaltError(halt.reason);
   }
   await addArtifact(root, {
     taskId: task.task_id,
@@ -574,6 +613,13 @@ async function buildScopedContextPacket(root: string, task: Task): Promise<strin
     "ACCEPTANCE CRITERIA:",
     ...task.acceptance_criteria.map((criterion) => "- " + (criterion)),
     ...(acceptanceContract.length > 0 ? ["", "ACCEPTANCE CONTRACT:", ...acceptanceContract] : []),
+    "",
+    "HALT PROTOCOL:",
+    "- If you determine the task is impossible, unsafe, contradictory, or that further iteration would not improve the outcome, respond with a single line at the very top of your response:",
+    "    HALT: <one-sentence reason>",
+    "- The runner will mark the task blocked, preserve your full reasoning as a model_halt artifact, and route the operator to repair the underlying cause.",
+    "- Do not emit HALT speculatively. Only refuse when you have grounded reasons (contradictory data, missing inputs, scope drift, or a verifiable impossibility).",
+    "- Do not embed HALT mid-response; only the first non-empty line counts.",
     ""
   ];
   for (const contextPath of task.input_context) {
@@ -725,6 +771,30 @@ async function resolveChatBlockers(root: string, taskId: string): Promise<void> 
     changed = true;
   }
   if (changed) await saveJson(root, "state/chat.json", chat);
+}
+
+async function addChatHalt(root: string, taskId: string, reason: string): Promise<void> {
+  const chat = ChatStoreSchema.parse(await loadJson(root, "state/chat.json"));
+  chat.messages.push({
+    message_id: nextId(
+      "M",
+      chat.messages.map((entry) => entry.message_id)
+    ),
+    timestamp: nowIso(),
+    from_agent: "runner",
+    to: "orchestrator",
+    type: "blocker",
+    task_id: taskId,
+    summary: "Model halted task " + taskId + ": " + reason,
+    details:
+      "The model emitted a HALT signal at the start of its response. The full reasoning is preserved at artifacts/runs/" +
+      taskId +
+      "/response_output.md as a model_halt artifact (not counted as a deliverable).",
+    requires_action: true,
+    recommended_next_step:
+      "Inspect the HALT reason and repair the underlying cause (data, registry, intent, or constraints). Then re-run with --rerun. If the HALT is a correct refusal, revise the plan or close the workflow rather than overriding."
+  });
+  await saveJson(root, "state/chat.json", chat);
 }
 
 async function addChatBlocker(root: string, taskId: string, message: string): Promise<void> {

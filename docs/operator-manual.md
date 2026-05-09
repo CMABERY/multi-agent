@@ -880,6 +880,16 @@ Common blockers:
 - Model quota or missing API key errors.
 - No active deployment when --deployment is omitted and no active context exists. Run maw status to inspect available deployments.
 
+Model HALT protocol:
+
+- A model_agent task may refuse with a HALT signal. The runner expects the marker on the very first non-empty line:
+
+      HALT: <one-sentence reason>
+
+- When detected, the runner marks the task blocked, sets task.blocker to "HALT: <reason>", preserves the full response under artifacts/runs/<task_id>/response_output.md as a model_halt artifact (not a deliverable), records a chat blocker with requires_action=true, and skips reviewer spawning. The deployment is marked failed and the run exits 1.
+- HALT routes the operator to maw doctor; doctor lists the chat with the recommended next step. Re-run with --rerun after addressing the underlying cause, or revise the plan if the refusal is correct.
+- The same response is delivered to the model via the scoped context packet so the model knows HALT is sanctioned and bounded; mid-response or speculative HALT does not trigger.
+
 ### context-check
 
 Purpose: check whether a task has sufficient, readable context.
@@ -1751,6 +1761,27 @@ Derived files include:
 - state/learning_memory.json
 
 ## Troubleshooting
+
+### Model HALT Signal
+
+Symptom:
+
+- run reports a task as blocked with task.blocker prefixed by "HALT:".
+- doctor surfaces a chat blocker of the form "Model halted task T-NNN: <reason>" with requires_action=true.
+- The artifact index shows a model_halt entry for the task; no model_output is registered.
+
+Meaning:
+
+- The model_agent emitted a sanctioned HALT marker at the very start of its response. The runner refused to treat the response as a deliverable, blocked the task, and skipped reviewers.
+- HALT is not a system error. It is a deliberate refusal: the model judged the task impossible, unsafe, contradictory, or pointless to iterate further.
+
+Fix:
+
+- Read artifacts/runs/<task_id>/response_output.md for the model's reasoning.
+- If the refusal is correct, revise the intent or scope and create a new plan rather than overriding the HALT.
+- If the underlying cause is repairable (missing dependency artifact, contradictory constraint, registry routing), repair it and re-run with maw run --rerun.
+
+The HALT marker must appear on the first non-empty line as HALT: followed by a non-empty reason. Mid-response HALT, lowercase halt, or HALT without a colon and reason does not trigger and the response is treated as a normal completion.
 
 ### Quotation Marks In Intent Text
 

@@ -83,6 +83,7 @@ Demos 1 through 21 cover the workflow ledger. Demos 22 through 25 cover the oper
 | Structured recovery packet | Demo 23 |
 | Safe extension with scaffold | Demo 24 |
 | Operator experience metrics | Demo 25 |
+| Model HALT signal | Demo 26 |
 
 ## Demo 1: Complete Typical Workflow
 
@@ -888,6 +889,35 @@ Operator decision:
 - Do not interpret metrics as a productivity score for the human operator.
 - Metrics are local only. They live in state/operator_experience.json and never store raw argv, intent text, approval scope, or any free-form user text.
 - The metrics command does not record itself, so reading metrics never changes metrics.
+
+## Demo 26: Model HALT Signal
+
+Purpose: recognize and act on a sanctioned model refusal.
+
+A model_agent task may emit a HALT marker (HALT: followed by a one-sentence reason) on the very first non-empty line of its response. The runner detects the marker and:
+
+- Marks the task blocked (not failed; HALT is a deliberate refusal, not a system error).
+- Sets task.blocker to "HALT: <reason>".
+- Preserves the full response under artifacts/runs/<task_id>/response_output.md as a model_halt artifact, distinct from a model_output deliverable.
+- Records a chat blocker with requires_action=true.
+- Skips structured reviewers for the halted task.
+- Marks the deployment failed and exits 1.
+
+Inspect after a halted run:
+
+    node $MawCli status
+    node $MawCli doctor
+    Get-Content state\chat.json | ConvertFrom-Json | Select-Object -ExpandProperty messages | Where-Object { $_.requires_action }
+    Get-Content artifacts\runs\T-001\response_output.md
+
+Expected status output names the blocked task and active deployment. Expected doctor output lists a CHAT_REQUIRES_ACTION finding with the recommended next step.
+
+Operator decision:
+
+- Read the response_output.md for the model's grounded reasoning. HALT is sanctioned only when the model has verifiable grounds (contradictory data, missing inputs, scope drift, impossibility).
+- If the refusal is correct, revise the intent or scope and create a new plan. Do not override a correct HALT.
+- If the underlying cause is repairable, fix it and re-run with maw run --rerun.
+- The HALT marker is strict: lowercase "halt", mid-response "HALT:", or "HALT" without a reason will not trigger and the response will be treated as a normal deliverable.
 
 ## Situation Reference
 

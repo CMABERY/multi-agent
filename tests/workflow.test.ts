@@ -364,6 +364,192 @@ describe("agentic orchestrator workflow", () => {
     });
   });
 
+  test("model HALT signal blocks the task without spawning reviewers", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+      const intent = await createIntent(root, { text: "Build something." });
+      const haltText =
+        "HALT: Source data is contradictory; refusing to fabricate convergence.\n\nFurther reasoning explaining the contradiction.";
+      const modelClient = {
+        createResponse: vi
+          .fn()
+          .mockResolvedValueOnce(modelResponse(JSON.stringify(validOrchestratorPayload())))
+          .mockResolvedValueOnce(modelResponse(haltText))
+      };
+
+      const orchestrated = await orchestrateIntent(root, {
+        intentId: intent.intent_id,
+        modelClient
+      });
+      await recordApproval(root, {
+        deploymentId: orchestrated.deployment_id,
+        approver: "test",
+        decision: "approved",
+        scope: "Run."
+      });
+
+      const result = await runDeployment(root, {
+        deploymentId: orchestrated.deployment_id,
+        modelClient
+      });
+
+      expect(result.completed).toEqual([]);
+      expect(result.failed).toEqual(["T-001"]);
+
+      const tasks = await loadJson(root, "state/task_board.json");
+      const task = tasks.tasks.find((entry: { task_id: string }) => entry.task_id === "T-001");
+      expect(task.status).toBe("blocked");
+      expect(task.blocker).toMatch(/^HALT:/);
+
+      const chat = await loadJson(root, "state/chat.json");
+      const haltMessage = chat.messages.find((entry: { summary: string }) =>
+        entry.summary.includes("Model halted")
+      );
+      expect(haltMessage).toBeDefined();
+      expect(haltMessage.requires_action).toBe(true);
+      expect(haltMessage.summary).toContain(
+        "Source data is contradictory; refusing to fabricate convergence."
+      );
+
+      const artifacts = await loadJson(root, "artifacts/artifact_index.json");
+      const haltArtifact = artifacts.artifacts.find(
+        (entry: { task_id: string }) => entry.task_id === "T-001"
+      );
+      expect(haltArtifact.type).toBe("model_halt");
+
+      // No model_output artifact registered; reviewers were not called.
+      const modelOutput = artifacts.artifacts.find(
+        (entry: { task_id: string; type: string }) =>
+          entry.task_id === "T-001" && entry.type === "model_output"
+      );
+      expect(modelOutput).toBeUndefined();
+
+      // Two model calls only: orchestrate + halted task. No reviewer calls.
+      expect(modelClient.createResponse).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  test("model agent with web_search allowed receives hosted web search tool", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+      await registerAgent(root, {
+        agent_id: "researcher_1",
+        role: "Research Agent",
+        executor_type: "model_agent",
+        model_tier: "mid",
+        allowed_tools: ["web_search"],
+        command_allowlist: [],
+        permissions: {
+          external_actions: true,
+          destructive_actions: false,
+          credential_access: false,
+          paid_actions: false,
+          public_actions: false
+        },
+        max_cost_usd: 1
+      });
+      await saveJson(root, "state/task_board.json", {
+        tasks: [
+          {
+            task_id: "T-001",
+            title: "Research current information",
+            owner_agent_id: "researcher_1",
+            owner_role: "Research Agent",
+            executor: "model_agent",
+            model_tier: "mid",
+            input_context: ["state/prompt_contract.md"],
+            output_required: "Current sourced brief",
+            acceptance_criteria: ["Brief cites current information"],
+            dependencies: [],
+            risk_level: "low",
+            review_required: false,
+            approval_required: false,
+            status: "queued",
+            artifacts: [],
+            deployment_id: "DP-001",
+            created_at: "2026-05-08T00:00:00.000Z",
+            updated_at: "2026-05-08T00:00:00.000Z"
+          }
+        ]
+      });
+      await saveJson(root, "state/deployment_plan.json", {
+        deployment_plans: [
+          {
+            deployment_id: "DP-001",
+            intent_id: "I-001",
+            status: "approved",
+            approval_required: false,
+            assignments: [
+              {
+                task_id: "T-001",
+                agent_id: "researcher_1",
+                executor: "model_agent",
+                model_tier: "mid",
+                reason: "Researcher can use hosted web search for current facts.",
+                approval_required: false
+              }
+            ],
+            created_at: "2026-05-08T00:00:00.000Z",
+            updated_at: "2026-05-08T00:00:00.000Z"
+          }
+        ]
+      });
+
+      const modelClient = {
+        createResponse: vi.fn().mockResolvedValue(modelResponse("current sourced brief"))
+      };
+      await runDeployment(root, { deploymentId: "DP-001", modelClient });
+
+      const request = modelClient.createResponse.mock.calls[0]?.[0];
+      expect(request.tools).toEqual([{ type: "web_search" }]);
+      expect(request.toolChoice).toBe("auto");
+      expect(request.include).toEqual(["web_search_call.action.sources"]);
+      expect(request.instructions).toContain("provided hosted tools");
+    });
+  });
+
+  test("HALT marker only triggers when at the very start of the response", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+      const intent = await createIntent(root, { text: "Build something." });
+      // Mid-paragraph "HALT:" should not trigger; this is a normal completion.
+      const normalText =
+        "Implementation draft for the task.\n\nNote: the agent considered HALT: in its analysis but proceeded.\n";
+      const modelClient = {
+        createResponse: vi
+          .fn()
+          .mockResolvedValueOnce(modelResponse(JSON.stringify(validOrchestratorPayload())))
+          .mockResolvedValueOnce(modelResponse(normalText))
+      };
+
+      const orchestrated = await orchestrateIntent(root, {
+        intentId: intent.intent_id,
+        modelClient
+      });
+      await recordApproval(root, {
+        deploymentId: orchestrated.deployment_id,
+        approver: "test",
+        decision: "approved",
+        scope: "Run."
+      });
+
+      const result = await runDeployment(root, {
+        deploymentId: orchestrated.deployment_id,
+        modelClient
+      });
+
+      expect(result.completed).toEqual(["T-001"]);
+      expect(result.failed).toEqual([]);
+
+      const artifacts = await loadJson(root, "artifacts/artifact_index.json");
+      const output = artifacts.artifacts.find(
+        (entry: { task_id: string; type: string }) =>
+          entry.task_id === "T-001" && entry.type === "model_output"
+      );
+      expect(output).toBeDefined();
+    });
+  });
+
   test("orchestrator refuses to re-orchestrate an intent that already has a deployment", async () => {
     await withWorkspace(async (root) => {
       await initWorkspace(root);
