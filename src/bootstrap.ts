@@ -48,6 +48,80 @@ const CORE_STATE_FILES: ReadonlyArray<{ path: string; schema: z.ZodTypeAny }> = 
 ];
 
 const KNOWN_DEFAULT_PERSONAS = ["skeptical", "completeness", "rigor"];
+const ARCHITECTURE_ENTRY_POINT_CANDIDATES: ReadonlyArray<BootstrapContinuity["architecture"]["entry_points"][number]> = [
+  {
+    path: "src/index.ts",
+    role: "CLI executable entry",
+    evidence: "package.json bin maw points to ./dist/src/index.js"
+  },
+  {
+    path: "src/cli.ts",
+    role: "CLI command surface",
+    evidence: "src/index.ts imports createCli from ./cli.js"
+  }
+];
+const ARCHITECTURE_KEY_MODULE_CANDIDATES: ReadonlyArray<BootstrapContinuity["architecture"]["key_modules"][number]> = [
+  {
+    path: "src/schemas.ts",
+    role: "persisted state schema authority",
+    evidence: "exports BootstrapPacketSchema"
+  },
+  {
+    path: "src/workspace.ts",
+    role: "workspace initialization and seed templates",
+    evidence: "exports initWorkspace"
+  },
+  {
+    path: "src/bootstrap.ts",
+    role: "session readiness and posture engine",
+    evidence: "exports runBootstrap and evaluatePosture"
+  },
+  {
+    path: "src/orchestrator.ts",
+    role: "intent-to-plan orchestration",
+    evidence: "exports createIntent and orchestrateIntent"
+  },
+  {
+    path: "src/runner.ts",
+    role: "approved deployment execution and reviewer spawning",
+    evidence: "exports runDeployment"
+  },
+  {
+    path: "src/planCheck.ts",
+    role: "deployment plan pre-flight checks",
+    evidence: "exports runPlanCheck and collectPlanIssues"
+  },
+  {
+    path: "src/contextCheck.ts",
+    role: "scoped context sufficiency checks",
+    evidence: "exports runContextCheck"
+  },
+  {
+    path: "src/reviews.ts",
+    role: "review persistence and legacy migration",
+    evidence: "exports recordReview and migrateLegacyReviews"
+  },
+  {
+    path: "src/consensus.ts",
+    role: "structured review consensus",
+    evidence: "exports computeConsensus"
+  },
+  {
+    path: "src/scoring.ts",
+    role: "workflow score computation",
+    evidence: "exports writeWorkflowScore"
+  },
+  {
+    path: "src/retrospective.ts",
+    role: "retrospective and learning memory",
+    evidence: "exports runRetrospective"
+  },
+  {
+    path: "src/performance.ts",
+    role: "agent performance memory",
+    evidence: "exports updateAgentPerformance"
+  }
+];
 
 export interface BootstrapResult {
   packet: BootstrapPacket;
@@ -176,6 +250,7 @@ async function collectContinuityFrame(root: string): Promise<ContinuityResult> {
     has_instructions_dir: await dirExists(root, "instructions"),
     has_model_config: await fileExists(root, "state/model_config.json")
   };
+  const architecture = await collectArchitectureFrame(root);
 
   return {
     continuity: {
@@ -184,10 +259,31 @@ async function collectContinuityFrame(root: string): Promise<ContinuityResult> {
       active_deployments: activeDeployments,
       active_tasks: activeTasks,
       recent_artifacts: recentArtifacts,
-      conventions
+      conventions,
+      architecture
     },
     parseFailures
   };
+}
+
+async function collectArchitectureFrame(root: string): Promise<BootstrapContinuity["architecture"]> {
+  return {
+    entry_points: await existingArchitectureEntries(root, ARCHITECTURE_ENTRY_POINT_CANDIDATES),
+    key_modules: await existingArchitectureEntries(root, ARCHITECTURE_KEY_MODULE_CANDIDATES)
+  };
+}
+
+async function existingArchitectureEntries<Entry extends { path: string }>(
+  root: string,
+  candidates: ReadonlyArray<Entry>
+): Promise<Entry[]> {
+  const entries: Entry[] = [];
+  for (const candidate of candidates) {
+    if (await fileExists(root, candidate.path)) {
+      entries.push(candidate);
+    }
+  }
+  return entries;
 }
 
 async function readProjectIdentity(
@@ -686,6 +782,12 @@ function renderContinuityBlock(continuity: BootstrapContinuity): string[] {
     "- Key deps: " + (continuity.stack.key_deps.length === 0 ? "none" : continuity.stack.key_deps.join(", ")),
     "- Conventions: protocols=" + (continuity.conventions.has_protocols_dir) + " instructions=" + (continuity.conventions.has_instructions_dir) + " model_config=" + (continuity.conventions.has_model_config),
     "",
+    "### Architecture Entry Points",
+    ...renderArchitectureEntries(continuity.architecture.entry_points),
+    "",
+    "### Key Modules",
+    ...renderArchitectureEntries(continuity.architecture.key_modules),
+    "",
     "### Active Deployments",
     ...(continuity.active_deployments.length === 0
       ? ["- None"]
@@ -709,6 +811,12 @@ function renderContinuityBlock(continuity: BootstrapContinuity): string[] {
         ))
   ];
   return lines;
+}
+
+function renderArchitectureEntries(entries: BootstrapContinuity["architecture"]["entry_points"]): string[] {
+  return entries.length === 0
+    ? ["- None"]
+    : entries.map((entry) => "- " + (entry.path) + ": " + (entry.role) + " (evidence: " + (entry.evidence) + ")");
 }
 
 function renderCounterContextBlock(counter: BootstrapCounterContext): string[] {

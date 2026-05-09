@@ -382,6 +382,141 @@ describe("bootstrap output shapes", () => {
     });
   });
 
+  test("schema defaults missing continuity architecture to empty arrays for old packets", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+      const result = await runBootstrap(root, { workType: "ordinary" });
+      const oldStylePacket = JSON.parse(JSON.stringify(result.packet)) as Record<string, unknown>;
+      const continuity = oldStylePacket.continuity as Record<string, unknown>;
+      delete continuity.architecture;
+
+      const parsed = BootstrapPacketSchema.parse(oldStylePacket);
+
+      expect(parsed.continuity.architecture.entry_points).toEqual([]);
+      expect(parsed.continuity.architecture.key_modules).toEqual([]);
+    });
+  });
+
+  test("schema accepts populated continuity architecture metadata", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+      const result = await runBootstrap(root, { workType: "ordinary" });
+      const packet = JSON.parse(JSON.stringify(result.packet)) as Record<string, unknown>;
+      const continuity = packet.continuity as Record<string, unknown>;
+      continuity.architecture = {
+        entry_points: [
+          {
+            path: "src/index.ts",
+            role: "CLI executable entry",
+            evidence: "package.json bin maw points to dist/src/index.js"
+          }
+        ],
+        key_modules: [
+          {
+            path: "src/schemas.ts",
+            role: "persisted state schema authority",
+            evidence: "exports BootstrapPacketSchema"
+          }
+        ]
+      };
+
+      const parsed = BootstrapPacketSchema.parse(packet);
+
+      expect(parsed.continuity.architecture.entry_points).toEqual([
+        {
+          path: "src/index.ts",
+          role: "CLI executable entry",
+          evidence: "package.json bin maw points to dist/src/index.js"
+        }
+      ]);
+      expect(parsed.continuity.architecture.key_modules).toEqual([
+        {
+          path: "src/schemas.ts",
+          role: "persisted state schema authority",
+          evidence: "exports BootstrapPacketSchema"
+        }
+      ]);
+    });
+  });
+
+  test("schema rejects continuity architecture entries with empty paths", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+      const result = await runBootstrap(root, { workType: "ordinary" });
+      const packet = JSON.parse(JSON.stringify(result.packet)) as Record<string, unknown>;
+      const continuity = packet.continuity as Record<string, unknown>;
+      continuity.architecture = {
+        entry_points: [
+          {
+            path: "",
+            role: "CLI executable entry",
+            evidence: "package.json bin maw points to dist/src/index.js"
+          }
+        ],
+        key_modules: []
+      };
+
+      expect(() => BootstrapPacketSchema.parse(packet)).toThrow();
+    });
+  });
+
+  test("runBootstrap populates architecture metadata for this repository", async () => {
+    const result = await runBootstrap(process.cwd(), { workType: "ordinary" });
+    const architectureText = JSON.stringify(result.packet.continuity.architecture);
+
+    expect(result.packet.continuity.architecture.entry_points).toEqual([
+      {
+        path: "src/index.ts",
+        role: "CLI executable entry",
+        evidence: "package.json bin maw points to ./dist/src/index.js"
+      },
+      {
+        path: "src/cli.ts",
+        role: "CLI command surface",
+        evidence: "src/index.ts imports createCli from ./cli.js"
+      }
+    ]);
+    expect(result.packet.continuity.architecture.key_modules).toEqual(
+      expect.arrayContaining([
+        {
+          path: "src/schemas.ts",
+          role: "persisted state schema authority",
+          evidence: "exports BootstrapPacketSchema"
+        },
+        {
+          path: "src/bootstrap.ts",
+          role: "session readiness and posture engine",
+          evidence: "exports runBootstrap and evaluatePosture"
+        },
+        {
+          path: "src/orchestrator.ts",
+          role: "intent-to-plan orchestration",
+          evidence: "exports createIntent and orchestrateIntent"
+        },
+        {
+          path: "src/runner.ts",
+          role: "approved deployment execution and reviewer spawning",
+          evidence: "exports runDeployment"
+        }
+      ])
+    );
+    expect(architectureText).not.toContain(String.fromCharCode(96));
+  });
+
+  test("markdown renders continuity architecture sections", async () => {
+    const result = await runBootstrap(process.cwd(), { workType: "ordinary" });
+
+    expect(result.markdown).toContain("### Architecture Entry Points");
+    expect(result.markdown).toContain("### Key Modules");
+    expect(result.markdown).toContain(
+      "- src/index.ts: CLI executable entry (evidence: package.json bin maw points to ./dist/src/index.js)"
+    );
+    expect(result.markdown).toContain(
+      "- src/bootstrap.ts: session readiness and posture engine (evidence: exports runBootstrap and evaluatePosture)"
+    );
+    expect(result.markdown).not.toContain(String.fromCharCode(96));
+  });
+
   test("elevated posture renders Counter-Context before Continuity", async () => {
     await withWorkspace(async (root) => {
       await initWorkspace(root);
@@ -432,7 +567,8 @@ function minimalContinuity(options: { activeRunning?: boolean } = {}) {
       ? [{ task_id: "T-001", status: "running", title: "x" }]
       : [],
     recent_artifacts: [],
-    conventions: { has_protocols_dir: true, has_instructions_dir: true, has_model_config: true }
+    conventions: { has_protocols_dir: true, has_instructions_dir: true, has_model_config: true },
+    architecture: { entry_points: [], key_modules: [] }
   };
 }
 

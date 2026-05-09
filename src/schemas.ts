@@ -478,6 +478,19 @@ export const BootstrapClaimSchema = z.object({
   staleness_risk: BootstrapStalenessSchema
 });
 
+const BootstrapArchitectureEntrySchema = z.object({
+  path: z.string().min(1),
+  role: z.string().min(1),
+  evidence: z.string().min(1)
+});
+
+const BootstrapArchitectureSchema = z
+  .object({
+    entry_points: z.array(BootstrapArchitectureEntrySchema).default([]),
+    key_modules: z.array(BootstrapArchitectureEntrySchema).default([])
+  })
+  .default({ entry_points: [], key_modules: [] });
+
 export const BootstrapContinuitySchema = z.object({
   project: z.object({
     name: z.string(),
@@ -516,7 +529,8 @@ export const BootstrapContinuitySchema = z.object({
     has_protocols_dir: z.boolean(),
     has_instructions_dir: z.boolean(),
     has_model_config: z.boolean()
-  })
+  }),
+  architecture: BootstrapArchitectureSchema
 });
 
 export const BootstrapCounterContextSchema = z.object({

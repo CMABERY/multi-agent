@@ -936,6 +936,16 @@ Does not:
 - Mutate any operational state file (task_board, deployment_plan, approvals, review_log, consensus, workflow_score, learning_memory, performance_ledger, metrics, chat, intent_queue, prompt_contract.md, decision_log.md, artifact_index.json).
 - Inspect node_modules/ or dist/ deeply; only their presence is reported.
 
+Architecture metadata:
+
+- The continuity frame includes continuity.architecture in JSON.
+- continuity.architecture contains entry_points and key_modules.
+- Each entry has path, role, and evidence.
+- Markdown renders these as ### Architecture Entry Points and ### Key Modules.
+- The architecture frame is bounded deterministic metadata from known local source files, not full static analysis.
+- Missing candidate source files are omitted.
+- Bootstrap still does not inspect dist/ or node_modules/ deeply.
+
 Posture levels and exit codes:
 
 - normal → exit 0. No escalations triggered.
