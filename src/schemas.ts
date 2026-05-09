@@ -27,6 +27,8 @@ export const TaskStatusSchema = z.enum([
   "approved"
 ]);
 
+export const ReviewerStateSchema = z.enum(["shadow", "probation", "full"]);
+
 export const AgentSchema = z
   .object({
     agent_id: z.string().min(1),
@@ -35,6 +37,13 @@ export const AgentSchema = z
     model_tier: ModelTierSchema.optional(),
     model: z.string().min(1).optional(),
     reviewer_persona: ReviewerPersonaSchema.optional(),
+    reviewer_state: ReviewerStateSchema.optional(),
+    reviewer_calibration: z
+      .object({
+        grader_output_id: z.string(),
+        decision: z.string()
+      })
+      .optional(),
     allowed_tools: z.array(z.string()).default([]),
     command_allowlist: z.array(z.string()).default([]),
     permissions: z.object({
@@ -663,6 +672,205 @@ export const OperatorExperienceSchema = z.object({
   first_complete_workflow_at: z.string().nullable().default(null)
 });
 
+// ---------------------------------------------------------------------------
+// Grader subsystem (per docs/grader-architecture.md)
+// ---------------------------------------------------------------------------
+
+export const GraderIdSchema = z.enum([
+  "reviewer_calibration",
+  "acceptance_criteria",
+  "intent",
+  "review_reasoning",
+  "output_quality"
+]);
+
+export const EnforcementStateSchema = z.enum([
+  "calibrating",
+  "observation_shadow",
+  "action_reversal_shadow",
+  "enforcement_pending",
+  "enforced"
+]);
+
+const PassWeakFailSchema = z.enum(["pass", "weak", "fail"]);
+
+export const GraderOutputSchema = z.object({
+  grader_output_id: z.string().regex(/^GO-\d+$/),
+  grader: GraderIdSchema,
+  grader_version: z.string(),
+  subject: z.record(z.unknown()),
+  decision_reason: z.array(z.string()).default([]),
+  expires_at: z.string().optional(),
+  recheck_triggers: z.array(z.string()).default([]),
+  provisional_thresholds: z.boolean(),
+  shadow_only: z.boolean(),
+  created_at: z.string()
+});
+
+export const ReviewerCalibrationOutputSchema = GraderOutputSchema.extend({
+  grader: z.literal("reviewer_calibration"),
+  subject: z.object({ reviewer_id: z.string() }),
+  decision: z.enum(["promote_to_full", "maintain_probation", "demote_to_shadow"]),
+  metrics: z.object({
+    gold_cases_seen: z.number().int().nonnegative(),
+    shared_cases_seen: z.number().int().nonnegative(),
+    dissent_cases_seen: z.number().int().nonnegative(),
+    gold_issue_hit_rate: z.number(),
+    gold_high_severity_hit_rate: z.number(),
+    gold_false_positive_rate: z.number(),
+    post_retro_correctness: z.number(),
+    agreement_lower_ci: z.number(),
+    dissent_precision: z.number(),
+    ECE: z.number(),
+    Brier: z.number()
+  })
+});
+
+export const AcceptanceCriteriaOutputSchema = GraderOutputSchema.extend({
+  grader: z.literal("acceptance_criteria"),
+  subject: z.object({
+    task_id: z.string(),
+    criterion_index: z.number().int().nonnegative()
+  }),
+  criterion_citation: z.string(),
+  grade: PassWeakFailSchema,
+  missing_element: z.enum([
+    "oracle",
+    "context",
+    "trigger",
+    "actor",
+    "threshold",
+    "reference",
+    "decomposition",
+    "none"
+  ]),
+  dimension_scores: z.object({
+    observable_oracle: PassWeakFailSchema,
+    trigger_action_clarity: PassWeakFailSchema,
+    context_precondition_sufficiency: PassWeakFailSchema,
+    reference_threshold_grounding: PassWeakFailSchema,
+    atomicity: PassWeakFailSchema,
+    edge_case_decidability: PassWeakFailSchema
+  }),
+  suggested_rewrite: z.string()
+});
+
+export const IntentOutputSchema = GraderOutputSchema.extend({
+  grader: z.literal("intent"),
+  subject: z.object({ intent_id: z.string() }),
+  grade: z.enum(["ready", "nudge", "refuse_to_plan"]),
+  scope_clarity: PassWeakFailSchema,
+  success_condition_present: PassWeakFailSchema,
+  ambient_context_sufficiency: PassWeakFailSchema,
+  decomposition_readiness: PassWeakFailSchema,
+  risk_or_policy_sensitivity: RiskLevelSchema,
+  suggested_decomposition: z.array(z.string()).default([]),
+  refinement_questions: z.array(z.string()).default([])
+});
+
+export const ReviewReasoningOutputSchema = GraderOutputSchema.extend({
+  grader: z.literal("review_reasoning"),
+  subject: z.object({
+    review_id: z.string(),
+    criterion_index: z.number().int().nonnegative()
+  }),
+  verdict_under_review: z.enum(["pass", "fail", "warn", "abstain"]),
+  rationale_grade: z.enum(["strong", "adequate", "weak", "invalid"]),
+  citation_alignment: z.object({
+    score: z.number(),
+    label: z.enum([
+      "fully_supported",
+      "partially_supported",
+      "relevant_but_insufficient",
+      "unsupported",
+      "contradicted"
+    ]),
+    unsupported_claims: z.array(z.string()).default([])
+  }),
+  specificity: z.object({
+    score: z.number(),
+    label: z.enum(["specific", "somewhat_specific", "generic", "vacuous"]),
+    generic_phrases: z.array(z.string()).default([])
+  }),
+  abstain_reason: z.string().optional()
+});
+
+export const OutputQualityOutputSchema = GraderOutputSchema.extend({
+  grader: z.literal("output_quality"),
+  subject: z.object({
+    artifact_id: z.string(),
+    task_id: z.string(),
+    agent_id: z.string()
+  }),
+  artifact_type: z.enum(["plan", "code", "report"]),
+  quality_vector: z.object({
+    completeness: z.number(),
+    faithfulness_to_spec: z.number(),
+    evidence_density: z.number(),
+    sequencing_validity: z.number(),
+    risk_validation_coverage: z.number(),
+    functional_correctness: z.number(),
+    defensive_coverage: z.number(),
+    integration_fit: z.number(),
+    maintainability: z.number(),
+    coverage_critical: z.number(),
+    evidence_to_claim: z.number(),
+    synthesis: z.number(),
+    uncertainty_handling: z.number()
+  }),
+  aggregate: z.object({
+    method: z.literal("gated_geometric_mean"),
+    score: z.number(),
+    hard_gate_failures: z.array(z.string()).default([])
+  }),
+  advisory_only_block: z.boolean()
+});
+
+export const GraderDescriptorSchema = z.object({
+  rubric_version: z.string(),
+  model_version: z.string(),
+  prompt_version: z.string(),
+  gold_set_version: z.string(),
+  task_family: z.string(),
+  compatibility_tags: z.array(z.string()).default([]),
+  provisional_thresholds: z.record(z.unknown()),
+  gold_set_pointer: z.string().optional(),
+  rubric_text_reference: z.string().optional()
+});
+
+export const GraderRegistryEntrySchema = z.object({
+  grader_id: GraderIdSchema,
+  current_descriptor_id: z.string(),
+  enforcement_state: EnforcementStateSchema,
+  last_audit_at: z.string().optional()
+});
+
+export const GraderRegistrySchema = z.object({
+  entries: z.array(GraderRegistryEntrySchema)
+});
+
+export const ProbationRecordSchema = z.object({
+  reviewer_id: z.string(),
+  started_at: z.string(),
+  adjudicated_dissent_count: z.number().int().nonnegative(),
+  conformity_window: z.object({
+    agreement_rate: z.number(),
+    correctness_rate: z.number(),
+    case_count: z.number().int().nonnegative()
+  })
+});
+
+export const ProbationLogSchema = z.object({
+  records: z.array(ProbationRecordSchema)
+});
+
+export const CalibrationRecordSchema = z.object({
+  grader_id: GraderIdSchema,
+  locked_gold_set: z.array(z.string()).default([]),
+  rolling_shadow_set: z.array(z.string()).default([]),
+  running_statistics: z.record(z.unknown())
+});
+
 export type Agent = z.infer<typeof AgentSchema>;
 export type AgentRegistry = z.infer<typeof AgentRegistrySchema>;
 export type Intent = z.infer<typeof IntentSchema>;
@@ -723,3 +931,18 @@ export type OperatorEventOutcome = z.infer<typeof OperatorEventOutcomeSchema>;
 export type OperatorEvent = z.infer<typeof OperatorEventSchema>;
 export type OperatorPendingRecovery = z.infer<typeof OperatorPendingRecoverySchema>;
 export type OperatorExperience = z.infer<typeof OperatorExperienceSchema>;
+export type GraderId = z.infer<typeof GraderIdSchema>;
+export type EnforcementState = z.infer<typeof EnforcementStateSchema>;
+export type ReviewerState = z.infer<typeof ReviewerStateSchema>;
+export type GraderOutput = z.infer<typeof GraderOutputSchema>;
+export type ReviewerCalibrationOutput = z.infer<typeof ReviewerCalibrationOutputSchema>;
+export type AcceptanceCriteriaOutput = z.infer<typeof AcceptanceCriteriaOutputSchema>;
+export type IntentOutput = z.infer<typeof IntentOutputSchema>;
+export type ReviewReasoningOutput = z.infer<typeof ReviewReasoningOutputSchema>;
+export type OutputQualityOutput = z.infer<typeof OutputQualityOutputSchema>;
+export type GraderDescriptor = z.infer<typeof GraderDescriptorSchema>;
+export type GraderRegistryEntry = z.infer<typeof GraderRegistryEntrySchema>;
+export type GraderRegistry = z.infer<typeof GraderRegistrySchema>;
+export type ProbationRecord = z.infer<typeof ProbationRecordSchema>;
+export type ProbationLog = z.infer<typeof ProbationLogSchema>;
+export type CalibrationRecord = z.infer<typeof CalibrationRecordSchema>;
