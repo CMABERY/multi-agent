@@ -1,4 +1,5 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
+import { join } from "node:path";
 import { Command } from "commander";
 import { recordApproval } from "./approvals.js";
 import { renderAutoPlanResult, runAutoPlan } from "./autoPlan.js";
@@ -32,6 +33,7 @@ import { generateReport } from "./report.js";
 import { migrateLegacyReviews, recordReview } from "./reviews.js";
 import { runRetrospective } from "./retrospective.js";
 import { runDeployment } from "./runner.js";
+import { loadJsonOrDefault } from "./storage.js";
 import {
   renderScaffoldResult,
   scaffoldAgent,
@@ -381,6 +383,120 @@ export function createCli(root = process.cwd()): Command {
       await printTransitionGuidance(root);
     });
 
+  const grader = program.command("grader").description("Inspect grader registry and outputs (read-only)");
+
+  grader
+    .command("status")
+    .description("Print the registered graders, their current descriptors, and enforcement state")
+    .action(async () => {
+      const registry = await loadJsonOrDefault<GraderRegistry>(root, "state/grader_registry.json", {
+        entries: []
+      });
+      const entries = Array.isArray(registry.entries) ? registry.entries : [];
+      if (entries.length === 0) {
+        console.log("No graders registered.");
+      } else {
+        for (const entry of entries) {
+          const lastAudit = entry.last_audit_at ?? "never";
+          console.log(
+            entry.grader_id +
+              " descriptor=" +
+              entry.current_descriptor_id +
+              " state=" +
+              entry.enforcement_state +
+              " last_audit=" +
+              lastAudit
+          );
+        }
+      }
+      await printTransitionGuidance(root);
+    });
+
+  grader
+    .command("list-outputs")
+    .requiredOption("--grader <graderId>", "Grader id (one of: " + KNOWN_GRADER_IDS.join(", ") + ")")
+    .option("--limit <N>", "Maximum number of outputs to list", "20")
+    .description("List the most recent grader outputs for a grader id, sorted by mtime descending")
+    .action(async (options: { grader: string; limit: string }) => {
+      assertKnownGraderId(options.grader);
+      const limit = parseListOutputsLimit(options.limit);
+      const dirRel = "state/grader_outputs/" + options.grader;
+      const dirAbs = join(root, dirRel);
+      let entries: { name: string; mtimeMs: number }[];
+      try {
+        const names = await readdir(dirAbs);
+        const stats = await Promise.all(
+          names.map(async (name) => {
+            const info = await stat(join(dirAbs, name));
+            return { name, mtimeMs: info.mtimeMs, isFile: info.isFile() };
+          })
+        );
+        entries = stats
+          .filter((entry) => entry.isFile && entry.name.endsWith(".json"))
+          .map((entry) => ({ name: entry.name, mtimeMs: entry.mtimeMs }));
+      } catch (error) {
+        if (isMissingFileError(error)) {
+          console.log("No outputs found for grader " + options.grader + ".");
+          await printTransitionGuidance(root);
+          return;
+        }
+        throw error;
+      }
+
+      if (entries.length === 0) {
+        console.log("No outputs found for grader " + options.grader + ".");
+        await printTransitionGuidance(root);
+        return;
+      }
+
+      entries.sort((a, b) => b.mtimeMs - a.mtimeMs);
+      const limited = entries.slice(0, limit);
+      const summaries = await Promise.all(
+        limited.map((entry) => readGraderOutputSummary(join(dirAbs, entry.name)))
+      );
+      for (let i = 0; i < limited.length; i++) {
+        const entry = limited[i]!;
+        const parsed = summaries[i]!;
+        console.log(
+          entry.name +
+            " grader_output_id=" +
+            (parsed.grader_output_id ?? "unknown") +
+            " grader=" +
+            (parsed.grader ?? "unknown") +
+            " created_at=" +
+            (parsed.created_at ?? "unknown")
+        );
+      }
+      await printTransitionGuidance(root);
+    });
+
+  grader
+    .command("audit")
+    .option("--json", "Print machine-readable JSON")
+    .description("Summarize registered graders and their enforcement-state distribution")
+    .action(async (options: { json?: boolean }) => {
+      const registry = await loadJsonOrDefault<GraderRegistry>(root, "state/grader_registry.json", {
+        entries: []
+      });
+      const entries = Array.isArray(registry.entries) ? registry.entries : [];
+      const summary = summarizeGraderRegistry(entries);
+      if (options.json) {
+        console.log(JSON.stringify(summary, null, 2));
+        return;
+      }
+      console.log("Total registered graders: " + summary.total);
+      const stateKeys = Object.keys(summary.by_state).sort();
+      if (stateKeys.length === 0) {
+        console.log("By state: none");
+      } else {
+        console.log("By state:");
+        for (const state of stateKeys) {
+          console.log("- " + state + ": " + summary.by_state[state]);
+        }
+      }
+      await printTransitionGuidance(root);
+    });
+
   const scaffold = program
     .command("scaffold")
     .description("Add sanctioned extensions: agent, reviewer, protocol, or local-command profile");
@@ -563,6 +679,84 @@ function parseMaxCost(raw: string | undefined): number | undefined {
     throw new Error("--max-cost must be a finite number.");
   }
   return value;
+}
+
+const KNOWN_GRADER_IDS = [
+  "reviewer_calibration",
+  "acceptance_criteria",
+  "intent",
+  "review_reasoning",
+  "output_quality"
+] as const;
+
+type KnownGraderId = (typeof KNOWN_GRADER_IDS)[number];
+
+interface GraderRegistryEntry {
+  grader_id: string;
+  current_descriptor_id: string;
+  enforcement_state: string;
+  last_audit_at?: string;
+}
+
+interface GraderRegistry {
+  entries: GraderRegistryEntry[];
+}
+
+interface GraderAuditSummary {
+  total: number;
+  by_state: Record<string, number>;
+}
+
+function assertKnownGraderId(value: string): asserts value is KnownGraderId {
+  if (!(KNOWN_GRADER_IDS as readonly string[]).includes(value)) {
+    throw new Error(
+      "Unknown grader id " + value + ". Valid: " + KNOWN_GRADER_IDS.join(", ") + "."
+    );
+  }
+}
+
+function parseListOutputsLimit(raw: string): number {
+  const value = Number(raw);
+  if (!Number.isFinite(value) || !Number.isInteger(value) || value <= 0) {
+    throw new Error("--limit must be a positive integer.");
+  }
+  return value;
+}
+
+function summarizeGraderRegistry(entries: GraderRegistryEntry[]): GraderAuditSummary {
+  const byState: Record<string, number> = {};
+  for (const entry of entries) {
+    const state = entry.enforcement_state;
+    byState[state] = (byState[state] ?? 0) + 1;
+  }
+  return { total: entries.length, by_state: byState };
+}
+
+async function readGraderOutputSummary(filePath: string): Promise<{
+  grader_output_id?: string;
+  grader?: string;
+  created_at?: string;
+}> {
+  try {
+    const raw = await readFile(filePath, "utf8");
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return {
+      grader_output_id: typeof parsed.grader_output_id === "string" ? parsed.grader_output_id : undefined,
+      grader: typeof parsed.grader === "string" ? parsed.grader : undefined,
+      created_at: typeof parsed.created_at === "string" ? parsed.created_at : undefined
+    };
+  } catch {
+    return {};
+  }
+}
+
+function isMissingFileError(error: unknown): boolean {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: string }).code === "ENOENT"
+  );
 }
 
 function renderOperatorStatus(
