@@ -49,7 +49,7 @@ export function createCli(root = process.cwd()): Command {
     .description("Ask the orchestrator agent to create a contract, task graph, and deployment plan")
     .action(async (options: { intent: string }) => {
       const result = await orchestrateIntent(root, { intentId: options.intent });
-      console.log(`Created deployment ${result.deployment_id} with tasks ${result.task_ids.join(", ")}.`);
+      console.log("Created deployment " + (result.deployment_id) + " with tasks " + (result.task_ids.join(", ")) + ".");
     });
 
   const approval = program.command("approval").description("Record human approval decisions");
@@ -91,7 +91,7 @@ export function createCli(root = process.cwd()): Command {
         issue?: string[];
       }) => {
         const issues = (options.issue ?? []).map((issue, index) => ({
-          issue_id: `I-${String(index + 1).padStart(3, "0")}`,
+          issue_id: "I-" + (String(index + 1).padStart(3, "0")),
           severity: "medium" as const,
           category: "manual_review",
           description: issue,
@@ -121,7 +121,7 @@ export function createCli(root = process.cwd()): Command {
         console.log(JSON.stringify(record, null, 2));
         return;
       }
-      console.log(`Consensus ${record.consensus_id}: ${record.overall_verdict}`);
+      console.log("Consensus " + (record.consensus_id) + ": " + (record.overall_verdict));
     });
 
   program
@@ -129,7 +129,7 @@ export function createCli(root = process.cwd()): Command {
     .description("Migrate legacy pre-v0.3 review records to structured abstentions")
     .action(async () => {
       const result = await migrateLegacyReviews(root);
-      console.log(`Migrated ${result.migratedCount} legacy reviews.`);
+      console.log("Migrated " + (result.migratedCount) + " legacy reviews.");
     });
 
   program
@@ -144,8 +144,8 @@ export function createCli(root = process.cwd()): Command {
         execute: Boolean(options.execute),
         rerun: Boolean(options.rerun)
       });
-      console.log(`Completed: ${result.completed.join(", ") || "none"}`);
-      if (result.failed.length > 0) console.log(`Failed: ${result.failed.join(", ")}`);
+      console.log("Completed: " + (result.completed.join(", ") || "none"));
+      if (result.failed.length > 0) console.log("Failed: " + (result.failed.join(", ")));
       if (result.failed.length > 0) process.exitCode = 1;
     });
 
@@ -156,7 +156,7 @@ export function createCli(root = process.cwd()): Command {
       return;
     }
     for (const issue of result.issues) {
-      console.error(`${issue.code}: ${issue.message}`);
+      console.error("" + (issue.code) + ": " + (issue.message));
     }
     process.exitCode = 1;
   });
@@ -172,14 +172,14 @@ export function createCli(root = process.cwd()): Command {
         console.log(JSON.stringify(score, null, 2));
         return;
       }
-      console.log(`Workflow Score ${score.score_id}`);
-      console.log(`Deployment: ${score.deployment_id}`);
-      console.log(`Verified Useful Outputs: ${score.verified_useful_outputs}`);
-      console.log(`Consensus Pass Count: ${score.consensus_pass_count}`);
-      console.log(`Consensus Split Count: ${score.consensus_split_count}`);
-      console.log(`Consensus Insufficient Count: ${score.consensus_insufficient_count}`);
-      console.log(`Review Pass Rate: ${score.review_pass_rate.toFixed(3)}`);
-      console.log(`Workflow Intelligence Yield: ${score.workflow_intelligence_yield.toFixed(4)}`);
+      console.log("Workflow Score " + (score.score_id));
+      console.log("Deployment: " + (score.deployment_id));
+      console.log("Verified Useful Outputs: " + (score.verified_useful_outputs));
+      console.log("Consensus Pass Count: " + (score.consensus_pass_count));
+      console.log("Consensus Split Count: " + (score.consensus_split_count));
+      console.log("Consensus Insufficient Count: " + (score.consensus_insufficient_count));
+      console.log("Review Pass Rate: " + (score.review_pass_rate.toFixed(3)));
+      console.log("Workflow Intelligence Yield: " + (score.workflow_intelligence_yield.toFixed(4)));
     });
 
   program
@@ -192,10 +192,10 @@ export function createCli(root = process.cwd()): Command {
       if (options.json) {
         console.log(JSON.stringify(check, null, 2));
       } else {
-        console.log(`Plan Check ${check.check_id}: ${check.status}`);
+        console.log("Plan Check " + (check.check_id) + ": " + (check.status));
         for (const issue of check.issues) {
-          console.log(`${issue.severity.toUpperCase()} ${issue.code} ${issue.target}: ${issue.message}`);
-          console.log(`Fix: ${issue.recommended_fix}`);
+          console.log("" + (issue.severity.toUpperCase()) + " " + (issue.code) + " " + (issue.target) + ": " + (issue.message));
+          console.log("Fix: " + (issue.recommended_fix));
         }
       }
       if (check.issues.some((issue) => issue.severity === "high")) process.exitCode = 1;
@@ -211,10 +211,10 @@ export function createCli(root = process.cwd()): Command {
       if (options.json) {
         console.log(JSON.stringify(check, null, 2));
       } else {
-        console.log(`Context Check ${check.check_id}: ${check.status}`);
+        console.log("Context Check " + (check.check_id) + ": " + (check.status));
         for (const issue of check.issues) {
-          console.log(`${issue.severity.toUpperCase()} ${issue.code} ${issue.target}: ${issue.message}`);
-          console.log(`Fix: ${issue.recommended_fix}`);
+          console.log("" + (issue.severity.toUpperCase()) + " " + (issue.code) + " " + (issue.target) + ": " + (issue.message));
+          console.log("Fix: " + (issue.recommended_fix));
         }
       }
       if (check.issues.some((issue) => issue.severity === "high")) process.exitCode = 1;
@@ -231,9 +231,9 @@ export function createCli(root = process.cwd()): Command {
         console.log(JSON.stringify(retrospective, null, 2));
         return;
       }
-      console.log(`Retrospective ${retrospective.retrospective_id}`);
-      console.log(`Path: ${retrospective.path}`);
-      console.log(`Learned Rules: ${retrospective.learned_rule_ids.join(", ") || "none"}`);
+      console.log("Retrospective " + (retrospective.retrospective_id));
+      console.log("Path: " + (retrospective.path));
+      console.log("Learned Rules: " + (retrospective.learned_rule_ids.join(", ") || "none"));
     });
 
   const performance = program.command("performance").description("Manage agent performance memory");
@@ -251,7 +251,7 @@ export function createCli(root = process.cwd()): Command {
       for (const agent of agents) {
         if (!agent.performance) continue;
         console.log(
-          `${agent.agent_id}: assigned=${agent.performance.tasks_assigned} completed=${agent.performance.tasks_completed} failed=${agent.performance.tasks_failed}`
+          "" + (agent.agent_id) + ": assigned=" + (agent.performance.tasks_assigned) + " completed=" + (agent.performance.tasks_completed) + " failed=" + (agent.performance.tasks_failed)
         );
       }
     });
@@ -269,7 +269,7 @@ export function createCli(root = process.cwd()): Command {
     .action(async (options: { json?: boolean; workType: string; persist?: boolean }) => {
       if (!VALID_WORK_TYPES.includes(options.workType as BootstrapWorkType)) {
         throw new Error(
-          `Invalid --work-type ${options.workType}. Valid: ${VALID_WORK_TYPES.join(", ")}.`
+          "Invalid --work-type " + (options.workType) + ". Valid: " + (VALID_WORK_TYPES.join(", ")) + "."
         );
       }
       const result = await runBootstrap(root, {

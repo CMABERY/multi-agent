@@ -30,39 +30,41 @@ import {
 } from "./openai.js";
 import { loadJson, loadJsonOrDefault, nowIso, saveJson, saveText } from "./storage.js";
 
-const ORCHESTRATOR_INSTRUCTIONS = `You are the orchestrator agent for a local multi-agent workflow runtime.
-Convert the user intent into a prompt contract, bounded tasks, registered-agent assignments, and decision records.
-Return only strict JSON with this shape:
-{
-  "prompt_contract_markdown": "# Prompt Contract...",
-  "tasks": [{
-    "title": "Task title",
-    "owner_agent_id": "registered_agent_id",
-    "owner_role": "Role name",
-    "executor": "model_agent|local_command|dry_run",
-    "model_tier": "low|mid|high",
-    "input_context": ["state/prompt_contract.md"],
-    "output_required": "Required output",
-    "acceptance_criteria": ["Specific criterion"],
-    "dependencies": ["T-001"],
-    "risk_level": "low|medium|high",
-    "review_required": true,
-    "approval_required": false
-  }],
-  "deployment_plan": {
-    "approval_required": true,
-    "assignments": [{
-      "task_id": "T-001",
-      "agent_id": "registered_agent_id",
-      "executor": "model_agent|local_command|dry_run",
-      "model_tier": "low|mid|high",
-      "reason": "Why this target is appropriate",
-      "approval_required": false
-    }]
-  },
-  "decisions": [{"decision": "Decision", "rationale": "Rationale", "owner": "orchestrator"}]
-}
-Use task ids T-001, T-002, etc. in the order tasks appear. Approval is required before deployment execution.`;
+const ORCHESTRATOR_INSTRUCTIONS = [
+  "You are the orchestrator agent for a local multi-agent workflow runtime.",
+  "Convert the user intent into a prompt contract, bounded tasks, registered-agent assignments, and decision records.",
+  "Return only strict JSON with this shape:",
+  "{",
+  "  \"prompt_contract_markdown\": \"# Prompt Contract...\",",
+  "  \"tasks\": [{",
+  "    \"title\": \"Task title\",",
+  "    \"owner_agent_id\": \"registered_agent_id\",",
+  "    \"owner_role\": \"Role name\",",
+  "    \"executor\": \"model_agent|local_command|dry_run\",",
+  "    \"model_tier\": \"low|mid|high\",",
+  "    \"input_context\": [\"state/prompt_contract.md\"],",
+  "    \"output_required\": \"Required output\",",
+  "    \"acceptance_criteria\": [\"Specific criterion\"],",
+  "    \"dependencies\": [\"T-001\"],",
+  "    \"risk_level\": \"low|medium|high\",",
+  "    \"review_required\": true,",
+  "    \"approval_required\": false",
+  "  }],",
+  "  \"deployment_plan\": {",
+  "    \"approval_required\": true,",
+  "    \"assignments\": [{",
+  "      \"task_id\": \"T-001\",",
+  "      \"agent_id\": \"registered_agent_id\",",
+  "      \"executor\": \"model_agent|local_command|dry_run\",",
+  "      \"model_tier\": \"low|mid|high\",",
+  "      \"reason\": \"Why this target is appropriate\",",
+  "      \"approval_required\": false",
+  "    }]",
+  "  },",
+  "  \"decisions\": [{\"decision\": \"Decision\", \"rationale\": \"Rationale\", \"owner\": \"orchestrator\"}]",
+  "}",
+  "Use task ids T-001, T-002, etc. in the order tasks appear. Approval is required before deployment execution."
+].join("\n");
 
 export async function createIntent(
   root: string,
@@ -102,7 +104,7 @@ export async function orchestrateIntent(
 ): Promise<{ deployment_id: string; task_ids: string[] }> {
   const queue = IntentQueueSchema.parse(await loadJson(root, "state/intent_queue.json"));
   const intent = queue.intents.find((entry) => entry.intent_id === input.intentId);
-  if (!intent) throw new Error(`Intent not found: ${input.intentId}`);
+  if (!intent) throw new Error("Intent not found: " + (input.intentId));
 
   const registry = AgentRegistrySchema.parse(await loadJson(root, "state/agent_registry.json"));
   const config = await loadModelConfig(root);
@@ -129,7 +131,7 @@ export async function orchestrateIntent(
       config,
       model,
       instructions,
-      input: revisionInput ? `${baseInput}\n\n${revisionInput}` : baseInput
+      input: revisionInput ? "" + (baseInput) + "\n\n" + (revisionInput) : baseInput
     });
     const proposed = buildProposedDeployment({
       output,
@@ -151,7 +153,7 @@ export async function orchestrateIntent(
         output.decisions = [
           {
             decision: "Revised orchestrator plan to address pre-flight violations",
-            rationale: `Auto-revision after ${attempt} retry(ies). Resolved triggers: ${uniqueCodes(lastHighIssues).join(", ")}.`,
+            rationale: "Auto-revision after " + (attempt) + " retry(ies). Resolved triggers: " + (uniqueCodes(lastHighIssues).join(", ")) + ".",
             owner: "orchestrator"
           },
           ...output.decisions
@@ -175,7 +177,7 @@ export async function orchestrateIntent(
   }
 
   throw new Error(
-    `Orchestrator could not produce a valid plan after ${config.orchestrator_max_retries} retries. Final violations: ${uniqueCodes(lastHighIssues).join(", ")}.`
+    "Orchestrator could not produce a valid plan after " + (config.orchestrator_max_retries) + " retries. Final violations: " + (uniqueCodes(lastHighIssues).join(", ")) + "."
   );
 }
 
@@ -197,7 +199,7 @@ async function requestOrchestratorOutput(
   });
   await incrementMetric(root, "model_calls", estimateModelCostUsd(input.config, input.model, response.usage));
   if (response.truncated) {
-    throw new Error(`Model response truncated at max_output_tokens (${input.config.max_output_tokens}).`);
+    throw new Error("Model response truncated at max_output_tokens (" + (input.config.max_output_tokens) + ").");
   }
   return OrchestratorOutputSchema.parse(parseModelJson(response.text));
 }
@@ -213,18 +215,18 @@ function buildProposedDeployment(input: {
   const createdTaskIds = input.output.tasks.map((_, index) =>
     nextId("T", [
       ...input.existingTaskIds,
-      ...Array.from({ length: index }, (_unused, i) => `T-${String(input.existingTaskIds.length + i + 1).padStart(3, "0")}`)
+      ...Array.from({ length: index }, (_unused, i) => "T-" + (String(input.existingTaskIds.length + i + 1).padStart(3, "0")))
     ])
   );
   const taskIdMap = new Map<string, string>();
   createdTaskIds.forEach((taskId, index) => {
-    taskIdMap.set(`T-${String(index + 1).padStart(3, "0")}`, taskId);
+    taskIdMap.set("T-" + (String(index + 1).padStart(3, "0")), taskId);
   });
 
   const knownAgents = new Set(input.registry.agents.map((agent) => agent.agent_id));
   const tasks: Task[] = input.output.tasks.map((task, index) => {
     if (!knownAgents.has(task.owner_agent_id)) {
-      throw new Error(`Orchestrator selected unknown agent: ${task.owner_agent_id}`);
+      throw new Error("Orchestrator selected unknown agent: " + (task.owner_agent_id));
     }
     return {
       ...task,
@@ -242,7 +244,7 @@ function buildProposedDeployment(input: {
   for (const task of tasks) {
     for (const dependency of task.dependencies) {
       if (!createdTaskIdSet.has(dependency) && !input.existingTaskIds.includes(dependency)) {
-        throw new Error(`Task ${task.task_id} depends on unknown task ${dependency}`);
+        throw new Error("Task " + (task.task_id) + " depends on unknown task " + (dependency));
       }
     }
   }
@@ -250,9 +252,9 @@ function buildProposedDeployment(input: {
   const assignments: DeploymentAssignment[] = input.output.deployment_plan.assignments.map((assignment) => {
     const taskId = taskIdMap.get(assignment.task_id) ?? assignment.task_id;
     const task = tasks.find((entry) => entry.task_id === taskId);
-    if (!task) throw new Error(`Deployment assignment references unknown task: ${assignment.task_id}`);
+    if (!task) throw new Error("Deployment assignment references unknown task: " + (assignment.task_id));
     if (!knownAgents.has(assignment.agent_id)) {
-      throw new Error(`Deployment assignment references unknown agent: ${assignment.agent_id}`);
+      throw new Error("Deployment assignment references unknown agent: " + (assignment.agent_id));
     }
     return {
       ...assignment,
@@ -274,11 +276,11 @@ function buildProposedDeployment(input: {
 
 function buildOrchestratorInput(intent: Intent, registry: AgentRegistry): string {
   return [
-    `Intent ID: ${intent.intent_id}`,
-    `User Intent: ${intent.text}`,
-    `Risk Level: ${intent.risk_level}`,
-    `Budget: ${intent.budget ?? "not specified"}`,
-    `Constraints: ${intent.constraints.length > 0 ? intent.constraints.join("; ") : "none"}`,
+    "Intent ID: " + (intent.intent_id),
+    "User Intent: " + (intent.text),
+    "Risk Level: " + (intent.risk_level),
+    "Budget: " + (intent.budget ?? "not specified"),
+    "Constraints: " + (intent.constraints.length > 0 ? intent.constraints.join("; ") : "none"),
     "",
     "Registered agents:",
     ...registry.agents.map((agent) => formatAgentForOrchestrator(agent))
@@ -286,19 +288,19 @@ function buildOrchestratorInput(intent: Intent, registry: AgentRegistry): string
 }
 
 function formatAgentForOrchestrator(agent: AgentRegistry["agents"][number]): string {
-  const base = `- ${agent.agent_id}: ${agent.role}; executor=${agent.executor_type}; tier=${agent.model_tier ?? "unspecified"}`;
+  const base = "- " + (agent.agent_id) + ": " + (agent.role) + "; executor=" + (agent.executor_type) + "; tier=" + (agent.model_tier ?? "unspecified");
   const performance = agent.performance;
   if (!performance || performance.tasks_assigned === 0) return base;
   const tokens = [
-    `assigned=${performance.tasks_assigned}`,
-    `completed=${performance.tasks_completed}`,
-    `failed=${performance.tasks_failed}`,
-    `reviews=${performance.review_passes}/${performance.review_failures}`
+    "assigned=" + (performance.tasks_assigned),
+    "completed=" + (performance.tasks_completed),
+    "failed=" + (performance.tasks_failed),
+    "reviews=" + (performance.review_passes) + "/" + (performance.review_failures)
   ];
   if (performance.dry_run_deliverable_mismatches > 0) {
-    tokens.push(`dry_run_mismatches=${performance.dry_run_deliverable_mismatches}`);
+    tokens.push("dry_run_mismatches=" + (performance.dry_run_deliverable_mismatches));
   }
-  return `${base}; ${tokens.join(" ")}`;
+  return "" + (base) + "; " + (tokens.join(" "));
 }
 
 async function loadActiveLearningRules(root: string, config: ModelConfig): Promise<LearningRule[]> {
@@ -318,7 +320,7 @@ function buildOrchestratorInstructions(rules: LearningRule[]): string {
     "",
     "## Active learning rules from prior runs",
     "These rules were derived from past failures. Plans that violate them will be rejected.",
-    ...rules.map((rule) => `- ${rule.rule} (trigger: ${rule.trigger}; seen: ${rule.times_seen} times)`),
+    ...rules.map((rule) => "- " + (rule.rule) + " (trigger: " + (rule.trigger) + "; seen: " + (rule.times_seen) + " times)"),
     "If your plan triggers any of these, expect rejection and revision."
   ].join("\n");
 }
@@ -327,8 +329,8 @@ function buildRevisionInput(issues: IntelligenceIssue[]): string {
   return [
     "The previous plan was rejected for these high-severity violations:",
     ...issues.flatMap((issue) => [
-      `- ${issue.code} at ${issue.target}: ${issue.message}`,
-      `  Recommended fix: ${issue.recommended_fix}`
+      "- " + (issue.code) + " at " + (issue.target) + ": " + (issue.message),
+      "  Recommended fix: " + (issue.recommended_fix)
     ]),
     "",
     "Produce a revised plan that addresses every violation. Keep all other fields identical unless changing them is necessary to resolve a violation."
@@ -341,7 +343,7 @@ function uniqueCodes(issues: IntelligenceIssue[]): string[] {
 
 function parseModelJson(text: string): unknown {
   const trimmed = text.trim();
-  const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(trimmed);
+  const fenced = /^\x60\x60\x60(?:json)?\s*([\s\S]*?)\s*\x60\x60\x60$/i.exec(trimmed);
   const json = fenced?.[1] ?? trimmed;
   return JSON.parse(json);
 }
@@ -355,12 +357,12 @@ async function appendDecisions(
   const entries = decisions
     .map((decision) =>
       [
-        `## ${decision.decision}`,
+        "## " + (decision.decision),
         "",
-        `Rationale: ${decision.rationale}`,
-        `Owner: ${decision.owner}`,
-        `Date: ${nowIso()}`,
-        decision.dissent ? `Dissent: ${decision.dissent}` : undefined,
+        "Rationale: " + (decision.rationale),
+        "Owner: " + (decision.owner),
+        "Date: " + (nowIso()),
+        decision.dissent ? "Dissent: " + (decision.dissent) : undefined,
         ""
       ]
         .filter(Boolean)
@@ -369,5 +371,5 @@ async function appendDecisions(
     .join("\n");
   const seed = "# Decision Log\n\nNo decisions recorded yet.";
   const base = current.trim() === seed ? "# Decision Log" : current.trim();
-  await saveText(root, "state/decision_log.md", `${base}\n\n${entries}`);
+  await saveText(root, "state/decision_log.md", "" + (base) + "\n\n" + (entries));
 }

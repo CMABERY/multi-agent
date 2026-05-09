@@ -19,7 +19,7 @@ export async function recordApproval(
   const approvals = ApprovalStoreSchema.parse(await loadJson(root, "state/approvals.json"));
   const plans = DeploymentPlanStoreSchema.parse(await loadJson(root, "state/deployment_plan.json"));
   const plan = plans.deployment_plans.find((entry) => entry.deployment_id === input.deploymentId);
-  if (!plan) throw new Error(`Deployment not found: ${input.deploymentId}`);
+  if (!plan) throw new Error("Deployment not found: " + (input.deploymentId));
 
   const now = nowIso();
   const approval: Approval = {

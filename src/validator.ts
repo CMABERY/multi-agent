@@ -47,7 +47,7 @@ export async function validateWorkspace(root: string): Promise<ValidationResult>
     ["consensus", consensusResult]
   ] as const) {
     if (!result.success) {
-      issues.push({ code: "SCHEMA_INVALID", message: `${name} is invalid: ${result.error.message}` });
+      issues.push({ code: "SCHEMA_INVALID", message: "" + (name) + " is invalid: " + (result.error.message) });
     }
   }
   if (
@@ -76,14 +76,14 @@ export async function validateWorkspace(root: string): Promise<ValidationResult>
     if (!agents.has(task.owner_agent_id)) {
       issues.push({
         code: "TASK_OWNER_MISSING",
-        message: `Task ${task.task_id} references missing owner ${task.owner_agent_id}`
+        message: "Task " + (task.task_id) + " references missing owner " + (task.owner_agent_id)
       });
     }
     for (const dependency of task.dependencies) {
       if (!tasks.has(dependency)) {
         issues.push({
           code: "TASK_DEPENDENCY_MISSING",
-          message: `Task ${task.task_id} depends on missing task ${dependency}`
+          message: "Task " + (task.task_id) + " depends on missing task " + (dependency)
         });
       }
     }
@@ -94,21 +94,21 @@ export async function validateWorkspace(root: string): Promise<ValidationResult>
       if (!approved) {
         issues.push({
           code: "TASK_APPROVAL_MISSING",
-          message: `Task ${task.task_id} requires approval but no approved deployment record exists`
+          message: "Task " + (task.task_id) + " requires approval but no approved deployment record exists"
         });
       }
     }
     if (task.review_required && task.status === "completed" && !passingConsensus.has(task.task_id)) {
       issues.push({
         code: "TASK_REVIEW_MISSING",
-        message: `Task ${task.task_id} is completed but lacks passing load-bearing consensus`
+        message: "Task " + (task.task_id) + " is completed but lacks passing load-bearing consensus"
       });
     }
     for (const artifactId of task.artifacts) {
       if (!artifacts.has(artifactId)) {
         issues.push({
           code: "ARTIFACT_MISSING",
-          message: `Task ${task.task_id} references missing artifact ${artifactId}`
+          message: "Task " + (task.task_id) + " references missing artifact " + (artifactId)
         });
       }
     }
@@ -119,13 +119,13 @@ export async function validateWorkspace(root: string): Promise<ValidationResult>
       if (!tasks.has(assignment.task_id)) {
         issues.push({
           code: "DEPLOYMENT_TASK_MISSING",
-          message: `Deployment ${plan.deployment_id} references missing task ${assignment.task_id}`
+          message: "Deployment " + (plan.deployment_id) + " references missing task " + (assignment.task_id)
         });
       }
       if (!agents.has(assignment.agent_id)) {
         issues.push({
           code: "DEPLOYMENT_AGENT_MISSING",
-          message: `Deployment ${plan.deployment_id} references missing agent ${assignment.agent_id}`
+          message: "Deployment " + (plan.deployment_id) + " references missing agent " + (assignment.agent_id)
         });
       }
     }

@@ -16,7 +16,7 @@ import { loadJson, nowIso } from "./storage.js";
 export async function loadDeploymentContext(root: string, deploymentId: string) {
   const plans = DeploymentPlanStoreSchema.parse(await loadJson(root, "state/deployment_plan.json"));
   const plan = plans.deployment_plans.find((entry) => entry.deployment_id === deploymentId);
-  if (!plan) throw new Error(`Deployment not found: ${deploymentId}`);
+  if (!plan) throw new Error("Deployment not found: " + (deploymentId));
   const board = TaskBoardSchema.parse(await loadJson(root, "state/task_board.json"));
   const registry = AgentRegistrySchema.parse(await loadJson(root, "state/agent_registry.json"));
   const artifactIndex = ArtifactIndexSchema.parse(await loadJson(root, "artifacts/artifact_index.json"));
@@ -33,7 +33,7 @@ export function isDeliverableTask(task: Task): boolean {
 }
 
 export function isReviewOrSynthesisTask(task: Task): boolean {
-  const haystack = `${task.title} ${task.owner_role} ${task.output_required}`.toLowerCase();
+  const haystack = "" + (task.title) + " " + (task.owner_role) + " " + (task.output_required).toLowerCase();
   return (
     haystack.includes("review") ||
     haystack.includes("synthes") ||
@@ -67,7 +67,7 @@ export function pathEscapesWorkspace(root: string, relativePath: string): boolea
   const absolute = resolve(root, normalize(relativePath));
   const workspace = resolve(root);
   const pathRelativeToRoot = relative(workspace, absolute);
-  return pathRelativeToRoot === ".." || pathRelativeToRoot.startsWith(`..${sep}`);
+  return pathRelativeToRoot === ".." || pathRelativeToRoot.startsWith(".." + (sep));
 }
 
 export async function isReadableWorkspacePath(root: string, relativePath: string): Promise<boolean> {

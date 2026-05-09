@@ -31,13 +31,13 @@ export class OpenAIResponsesClient implements ModelClient {
   async createResponse(request: ModelRequest): Promise<ModelResponse> {
     const apiKey = process.env[this.config.api_key_env];
     if (!apiKey) {
-      throw new Error(`Missing OpenAI API key environment variable: ${this.config.api_key_env}`);
+      throw new Error("Missing OpenAI API key environment variable: " + (this.config.api_key_env));
     }
 
-    const response = await fetch(`${this.config.base_url}/responses`, {
+    const response = await fetch("" + (this.config.base_url) + "/responses", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: "Bearer " + (apiKey),
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
@@ -50,7 +50,7 @@ export class OpenAIResponsesClient implements ModelClient {
 
     if (!response.ok) {
       const body = await response.text();
-      throw new Error(`OpenAI Responses API request failed (${response.status}): ${body}`);
+      throw new Error("OpenAI Responses API request failed (" + (response.status) + "): " + (body));
     }
 
     const data: unknown = await response.json();

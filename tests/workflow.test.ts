@@ -1665,12 +1665,12 @@ describe("agentic orchestrator workflow", () => {
               criterion: "Brief includes the required evidence claim",
               verdict: "pass",
               citations: [{ artifact_id: artifactId, line_start: 1, line_end: 2 }],
-              rationale: `${persona} verified the evidence span.`,
+              rationale: "" + (persona) + " verified the evidence span.",
               confidence: 0.9
             }
           ],
           identified_issues: [],
-          free_form_assessment: `${persona} assessment`
+          free_form_assessment: "" + (persona) + " assessment"
         });
       const modelClient = {
         createResponse: vi.fn(async (request: { instructions: string; input: string }) => {

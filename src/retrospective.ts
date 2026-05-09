@@ -67,7 +67,7 @@ export async function runRetrospective(
       "RET",
       retrospectiveIndex.retrospectives.map((entry) => entry.retrospective_id)
     );
-  const path = existing?.path ?? `state/retrospectives/${retrospectiveId}.md`;
+  const path = existing?.path ?? "state/retrospectives/" + (retrospectiveId) + ".md";
   await mkdir(join(root, "state/retrospectives"), { recursive: true });
   await saveText(
     root,
@@ -121,7 +121,7 @@ function upsertLearningRules(
   const now = nowIso();
   for (const issue of issues.filter((entry) => entry.severity === "high" || entry.severity === "medium")) {
     const ruleText = ruleForIssue(issue);
-    const source = `${deploymentId}/${issue.target}/${issue.code}`;
+    const source = "" + (deploymentId) + "/" + (issue.target) + "/" + (issue.code);
     const existing = rules.find((rule) => rule.trigger === issue.code && rule.rule === ruleText);
     if (existing) {
       existing.sources_seen ??= [];
@@ -191,27 +191,27 @@ function renderRetrospectiveMarkdown(input: {
   learnedRuleIds: string[];
 }): string {
   return [
-    `# Retrospective ${input.retrospectiveId}`,
+    "# Retrospective " + (input.retrospectiveId),
     "",
-    `Deployment: ${input.deploymentId}`,
-    `Workflow Intelligence Yield: ${input.score.workflow_intelligence_yield}`,
-    `Verified Useful Outputs: ${input.score.verified_useful_outputs}`,
+    "Deployment: " + (input.deploymentId),
+    "Workflow Intelligence Yield: " + (input.score.workflow_intelligence_yield),
+    "Verified Useful Outputs: " + (input.score.verified_useful_outputs),
     "",
     "## Plan Issues",
     ...(input.planIssues.length === 0
       ? ["- None"]
-      : input.planIssues.map((issue) => `- ${issue.code} [${issue.severity}] ${issue.target}: ${issue.message}`)),
+      : input.planIssues.map((issue) => "- " + (issue.code) + " [" + (issue.severity) + "] " + (issue.target) + ": " + (issue.message))),
     "",
     "## Context Issues",
     ...(input.contextIssues.length === 0
       ? ["- None"]
-      : input.contextIssues.map((issue) => `- ${issue.code} [${issue.severity}] ${issue.target}: ${issue.message}`)),
+      : input.contextIssues.map((issue) => "- " + (issue.code) + " [" + (issue.severity) + "] " + (issue.target) + ": " + (issue.message))),
     "",
     "## Blockers",
-    ...(input.blockers.length === 0 ? ["- None"] : input.blockers.map((blocker) => `- ${blocker}`)),
+    ...(input.blockers.length === 0 ? ["- None"] : input.blockers.map((blocker) => "- " + (blocker))),
     "",
     "## Learned Rules",
-    ...(input.learnedRuleIds.length === 0 ? ["- None"] : input.learnedRuleIds.map((id) => `- ${id}`)),
+    ...(input.learnedRuleIds.length === 0 ? ["- None"] : input.learnedRuleIds.map((id) => "- " + (id))),
     ""
   ].join("\n");
 }

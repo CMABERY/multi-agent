@@ -54,7 +54,7 @@ export function buildReviewerInstructions(persona: ReviewerPersona, task: Task):
     ...(criterionRules.length > 0 ? ["", "Criterion-specific rules:", ...criterionRules] : []),
     "",
     "Acceptance criteria:",
-    ...task.acceptance_criteria.map((criterion) => `- ${criterion}`)
+    ...task.acceptance_criteria.map((criterion) => "- " + (criterion))
   ].join("\n");
 }
 

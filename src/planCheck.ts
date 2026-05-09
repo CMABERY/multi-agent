@@ -102,7 +102,7 @@ export function collectPlanIssues(input: {
           severity: "high",
           code: "ASSIGNMENT_TASK_MISSING",
           target: assignment.task_id,
-          message: `Assignment references missing task ${assignment.task_id}.`,
+          message: "Assignment references missing task " + (assignment.task_id) + ".",
           recommended_fix: "Remove the assignment or create the referenced task."
         })
       );
@@ -114,7 +114,7 @@ export function collectPlanIssues(input: {
           severity: "high",
           code: "ASSIGNMENT_AGENT_MISSING",
           target: assignment.agent_id,
-          message: `Assignment references missing agent ${assignment.agent_id}.`,
+          message: "Assignment references missing agent " + (assignment.agent_id) + ".",
           recommended_fix: "Register the agent or route the task to an existing agent."
         })
       );
@@ -123,8 +123,8 @@ export function collectPlanIssues(input: {
         makeIssue(issues, {
           severity: "high",
           code: "EXECUTOR_REGISTRY_MISMATCH",
-          target: `${assignment.task_id}/${assignment.agent_id}`,
-          message: `Assignment executor ${assignment.executor} conflicts with registered executor ${agent.executor_type}.`,
+          target: "" + (assignment.task_id) + "/" + (assignment.agent_id),
+          message: "Assignment executor " + (assignment.executor) + " conflicts with registered executor " + (agent.executor_type) + ".",
           recommended_fix: "Align the assignment executor with the agent registry or choose a different agent."
         })
       );
@@ -135,7 +135,7 @@ export function collectPlanIssues(input: {
           severity: "high",
           code: "DRY_RUN_DELIVERABLE",
           target: task.task_id,
-          message: `Task ${task.task_id} requires a deliverable but is routed to dry_run.`,
+          message: "Task " + (task.task_id) + " requires a deliverable but is routed to dry_run.",
           recommended_fix: "Route deliverable tasks to model_agent or local_command; reserve dry_run for packet generation."
         })
       );
@@ -149,7 +149,7 @@ export function collectPlanIssues(input: {
           severity: "high",
           code: "HIGH_RISK_REVIEW_MISSING",
           target: task.task_id,
-          message: `High-risk task ${task.task_id} does not require review.`,
+          message: "High-risk task " + (task.task_id) + " does not require review.",
           recommended_fix: "Set review_required=true and route an independent reviewer task."
         })
       );
@@ -160,7 +160,7 @@ export function collectPlanIssues(input: {
           severity: "high",
           code: "INSUFFICIENT_REVIEWERS",
           target: task.task_id,
-          message: `High-risk reviewable task ${task.task_id} has only ${reviewerPersonaCount} reviewer personas available.`,
+          message: "High-risk reviewable task " + (task.task_id) + " has only " + (reviewerPersonaCount) + " reviewer personas available.",
           recommended_fix: "Register at least three Reviewer agents with distinct reviewer_persona values before high-risk execution."
         })
       );
@@ -171,7 +171,7 @@ export function collectPlanIssues(input: {
           severity: "medium",
           code: "VAGUE_ACCEPTANCE_CRITERIA",
           target: task.task_id,
-          message: `Task ${task.task_id} has vague or weak acceptance criteria.`,
+          message: "Task " + (task.task_id) + " has vague or weak acceptance criteria.",
           recommended_fix: "Replace generic criteria with measurable pass/fail checks."
         })
       );
@@ -182,7 +182,7 @@ export function collectPlanIssues(input: {
           severity: "medium",
           code: "UNTESTABLE_ACCEPTANCE_CRITERIA",
           target: task.task_id,
-          message: `Task ${task.task_id} has acceptance criteria that are too vague or subjective to verify.`,
+          message: "Task " + (task.task_id) + " has acceptance criteria that are too vague or subjective to verify.",
           recommended_fix: "Rewrite each criterion with an observable predicate and concrete evidence target."
         })
       );
@@ -193,7 +193,7 @@ export function collectPlanIssues(input: {
           severity: "high",
           code: "NO_DELIVERABLE_ARTIFACT",
           target: task.task_id,
-          message: `Review-required task ${task.task_id} has no model_output or command_output artifact source for reviewer citations.`,
+          message: "Review-required task " + (task.task_id) + " has no model_output or command_output artifact source for reviewer citations.",
           recommended_fix: "Route the reviewed task to model_agent or local_command and ensure it emits a citable output artifact."
         })
       );
@@ -205,7 +205,7 @@ export function collectPlanIssues(input: {
             severity: "high",
             code: "LOCAL_COMMAND_MISSING",
             target: task.task_id,
-            message: `Local command task ${task.task_id} has no command configured.`,
+            message: "Local command task " + (task.task_id) + " has no command configured.",
             recommended_fix: "Add a command spec or choose a non-command executor."
           })
         );
@@ -214,8 +214,8 @@ export function collectPlanIssues(input: {
           makeIssue(issues, {
             severity: "high",
             code: "LOCAL_COMMAND_NOT_ALLOWLISTED",
-            target: `${task.task_id}/${task.command.command}`,
-            message: `Command ${task.command.command} is not allowlisted for ${agent.agent_id}.`,
+            target: "" + (task.task_id) + "/" + (task.command.command),
+            message: "Command " + (task.command.command) + " is not allowlisted for " + (agent.agent_id) + ".",
             recommended_fix: "Add the command to the agent allowlist or route to another agent."
           })
         );
@@ -236,8 +236,8 @@ export function collectPlanIssues(input: {
             makeIssue(issues, {
               severity: "high",
               code: "REVIEW_DEPENDENCY_ARTIFACT_MISSING",
-              target: `${task.task_id}/${dependencyId}`,
-              message: `Review/synthesis task ${task.task_id} lacks artifact context from dependency ${dependencyId}.`,
+              target: "" + (task.task_id) + "/" + (dependencyId),
+              message: "Review/synthesis task " + (task.task_id) + " lacks artifact context from dependency " + (dependencyId) + ".",
               recommended_fix: "Ensure every dependency produces an indexed artifact before reviewer/synthesizer execution."
             })
           );
@@ -277,8 +277,8 @@ function addPerformanceRoutingIssues(
         makeIssue(issues, {
           severity: "high",
           code: "LOW_REVIEW_PASS_RATE_FOR_RISK",
-          target: `${task.task_id}/${agent.agent_id}`,
-          message: `Agent ${agent.agent_id} has review pass rate ${rate.toFixed(2)} (below floor ${config.performance_review_pass_floor}); high-risk task ${task.task_id} should not route here.`,
+          target: "" + (task.task_id) + "/" + (agent.agent_id),
+          message: "Agent " + (agent.agent_id) + " has review pass rate " + (rate.toFixed(2)) + " (below floor " + (config.performance_review_pass_floor) + "); high-risk task " + (task.task_id) + " should not route here.",
           recommended_fix:
             "Route the task to an agent with a higher review pass rate or improve the agent's prior review record before assigning high-risk work."
         })
@@ -293,8 +293,8 @@ function addPerformanceRoutingIssues(
         makeIssue(issues, {
           severity: "high",
           code: "HIGH_FAILURE_RATE_AGENT",
-          target: `${task.task_id}/${agent.agent_id}`,
-          message: `Agent ${agent.agent_id} has failure rate ${rate.toFixed(2)} (above ceiling ${config.performance_failure_rate_ceiling}); ${task.risk_level}-risk task ${task.task_id} should not route here.`,
+          target: "" + (task.task_id) + "/" + (agent.agent_id),
+          message: "Agent " + (agent.agent_id) + " has failure rate " + (rate.toFixed(2)) + " (above ceiling " + (config.performance_failure_rate_ceiling) + "); " + (task.risk_level) + "-risk task " + (task.task_id) + " should not route here.",
           recommended_fix:
             "Route the task to an agent with a lower failure history or address the agent's known_failure_modes before assigning non-trivial risk."
         })

@@ -218,7 +218,7 @@ async function readStackSummary(root: string): Promise<BootstrapContinuity["stac
       devDependencies?: Record<string, unknown>;
     };
     if (parsed.engines && typeof parsed.engines.node === "string") {
-      runtime = `node ${parsed.engines.node}`;
+      runtime = "node " + (parsed.engines.node);
     }
     const deps = { ...(parsed.dependencies ?? {}), ...(parsed.devDependencies ?? {}) };
     keyDeps = Object.keys(deps).sort();
@@ -276,10 +276,10 @@ function mergeParseFailures(
   left: Array<{ path: string; error: string }>,
   right: Array<{ path: string; error: string }>
 ): Array<{ path: string; error: string }> {
-  const seen = new Set(left.map((entry) => `${entry.path}:${entry.error}`));
+  const seen = new Set(left.map((entry) => "" + (entry.path) + ":" + (entry.error)));
   const merged = [...left];
   for (const entry of right) {
-    const key = `${entry.path}:${entry.error}`;
+    const key = "" + (entry.path) + ":" + (entry.error);
     if (seen.has(key)) continue;
     seen.add(key);
     merged.push(entry);
@@ -396,7 +396,7 @@ async function probeRuntimeState(root: string): Promise<string[]> {
   if (planParsed.success) {
     for (const plan of planParsed.data.deployment_plans) {
       if (plan.status === "running") {
-        warnings.push(`Deployment ${plan.deployment_id} is currently running.`);
+        warnings.push("Deployment " + (plan.deployment_id) + " is currently running.");
       }
     }
   }
@@ -406,15 +406,15 @@ async function probeRuntimeState(root: string): Promise<string[]> {
   if (boardParsed.success) {
     const running = boardParsed.data.tasks.filter((task) => task.status === "running");
     if (running.length > 0) {
-      warnings.push(`${running.length} task(s) in running state: ${running.map((task) => task.task_id).join(", ")}.`);
+      warnings.push("" + (running.length) + " task(s) in running state: " + (running.map((task) => task.task_id).join(", ")) + ".");
     }
     const blocked = boardParsed.data.tasks.filter((task) => task.status === "blocked");
     if (blocked.length > 0) {
-      warnings.push(`${blocked.length} task(s) blocked.`);
+      warnings.push("" + (blocked.length) + " task(s) blocked.");
     }
     const failed = boardParsed.data.tasks.filter((task) => task.status === "failed");
     if (failed.length > 0) {
-      warnings.push(`${failed.length} task(s) failed.`);
+      warnings.push("" + (failed.length) + " task(s) failed.");
     }
   }
 
@@ -436,7 +436,7 @@ async function probeDocStateDrift(root: string): Promise<string[]> {
   for (const expected of KNOWN_DEFAULT_PERSONAS) {
     if (!reviewerPersonas.has(expected)) {
       warnings.push(
-        `Default reviewer persona "${expected}" is missing from agent_registry; docs (workspace.ts seed) reference it.`
+        "Default reviewer persona \"" + (expected) + "\" is missing from agent_registry; docs (workspace.ts seed) reference it."
       );
     }
   }
@@ -459,7 +459,7 @@ export function evaluatePosture(input: PostureInput): PostureResult {
   const escalations: Array<{ to: BootstrapPosture; reason: string }> = [];
 
   for (const failure of input.counterContext.parse_failures) {
-    escalations.push({ to: "ask_human", reason: `core state unparseable: ${failure.path}` });
+    escalations.push({ to: "ask_human", reason: "core state unparseable: " + (failure.path) });
   }
 
   const runningDeployments = input.continuity.active_deployments.filter(
@@ -469,9 +469,9 @@ export function evaluatePosture(input: PostureInput): PostureResult {
   if (runningDeployments.length > 0 && stateRiskWorkTypes.includes(input.workType)) {
     escalations.push({
       to: "ask_human",
-      reason: `active running deployment(s) overlap with --work-type ${input.workType}: ${runningDeployments
+      reason: "active running deployment(s) overlap with --work-type " + (input.workType) + ": " + (runningDeployments
         .map((deployment) => deployment.deployment_id)
-        .join(", ")}.`
+        .join(", ")) + "."
     });
   }
 
@@ -488,7 +488,7 @@ export function evaluatePosture(input: PostureInput): PostureResult {
   if (wideUntracked) {
     escalations.push({
       to: "wide_scan",
-      reason: `large untracked surface: untracked_count=${input.counterContext.git.untracked_count}, untracked_capped=${input.counterContext.git.untracked_capped} - perception narrowed; widen scope before acting.`
+      reason: "large untracked surface: untracked_count=" + (input.counterContext.git.untracked_count) + ", untracked_capped=" + (input.counterContext.git.untracked_capped) + " - perception narrowed; widen scope before acting."
     });
   }
 
@@ -528,7 +528,7 @@ export function evaluatePosture(input: PostureInput): PostureResult {
   }
 
   for (const warning of input.counterContext.drift_warnings) {
-    escalations.push({ to: "wide_scan", reason: `doc/code drift: ${warning}` });
+    escalations.push({ to: "wide_scan", reason: "doc/code drift: " + (warning) });
   }
 
   const reasons = escalations.map((entry) => entry.reason);
@@ -553,7 +553,7 @@ export function evaluatePosture(input: PostureInput): PostureResult {
     if (input.counterContext.drift_warnings.length > 0) {
       requiredExtraReview.push("Reconcile agent_registry vs workspace.ts default seed drift before changes.");
     }
-    requiredExtraReview.push("Run `maw plan-check` against any new deployment before approval.");
+    requiredExtraReview.push("Run maw plan-check against any new deployment before approval.");
   }
 
   return { posture, reasons, requiredExtraReview };
@@ -572,32 +572,32 @@ function buildClaims(input: {
 }): BootstrapClaim[] {
   const claims: BootstrapClaim[] = [
     {
-      claim: `Project identity: ${input.continuity.project.name}@${input.continuity.project.version}.`,
+      claim: "Project identity: " + (input.continuity.project.name) + "@" + (input.continuity.project.version) + ".",
       source_paths: ["package.json"],
       confidence: "documented",
       staleness_risk: "low"
     },
     {
-      claim: `Runtime: ${input.continuity.stack.runtime}; language: ${input.continuity.stack.language}.`,
+      claim: "Runtime: " + (input.continuity.stack.runtime) + "; language: " + (input.continuity.stack.language) + ".",
       source_paths: ["package.json", "tsconfig.json"],
       confidence: "documented",
       staleness_risk: "low"
     },
     {
-      claim: `Active deployments observed: ${input.continuity.active_deployments.length}.`,
+      claim: "Active deployments observed: " + (input.continuity.active_deployments.length) + ".",
       source_paths: ["state/deployment_plan.json"],
       confidence: "state_observed",
       staleness_risk: "high"
     },
     {
-      claim: `Active task surface: ${input.continuity.active_tasks.length} task(s) running/blocked/failed.`,
+      claim: "Active task surface: " + (input.continuity.active_tasks.length) + " task(s) running/blocked/failed.",
       source_paths: ["state/task_board.json"],
       confidence: "state_observed",
       staleness_risk: "high"
     },
     {
       claim: input.counterContext.git.present
-        ? `Git repository present (commits=${input.counterContext.git.has_commits}, remote=${input.counterContext.git.has_remote}, status_capped=${input.counterContext.git.status_capped}, top-level untracked entries=${input.counterContext.git.untracked_count}${input.counterContext.git.untracked_capped ? ", capped" : ""}).`
+        ? "Git repository present (commits=" + (input.counterContext.git.has_commits) + ", remote=" + (input.counterContext.git.has_remote) + ", status_capped=" + (input.counterContext.git.status_capped) + ", top-level untracked entries=" + (input.counterContext.git.untracked_count) + (input.counterContext.git.untracked_capped ? ", capped" : "") + ")."
         : "No git repository at workspace root.",
       source_paths: [".git"],
       command: "git rev-parse --is-inside-work-tree",
@@ -608,7 +608,7 @@ function buildClaims(input: {
 
   if (input.counterContext.parse_failures.length > 0) {
     claims.push({
-      claim: `Core state parse failures: ${input.counterContext.parse_failures.length}.`,
+      claim: "Core state parse failures: " + (input.counterContext.parse_failures.length) + ".",
       source_paths: input.counterContext.parse_failures.map((failure) => failure.path),
       confidence: "state_observed",
       staleness_risk: "high"
@@ -616,7 +616,7 @@ function buildClaims(input: {
   }
   if (input.counterContext.drift_warnings.length > 0) {
     claims.push({
-      claim: `Doc/code drift signals detected: ${input.counterContext.drift_warnings.length}.`,
+      claim: "Doc/code drift signals detected: " + (input.counterContext.drift_warnings.length) + ".",
       source_paths: ["state/agent_registry.json", "src/workspace.ts"],
       confidence: "code_inferred",
       staleness_risk: "medium"
@@ -630,20 +630,20 @@ function renderMarkdown(packet: BootstrapPacket): string {
   const elevatedPostures: BootstrapPosture[] = ["wide_scan", "ask_human", "governed"];
   const counterFirst = elevatedPostures.includes(packet.posture);
   const sections = [
-    `# Bootstrap ${packet.bootstrap_id}`,
+    "# Bootstrap " + (packet.bootstrap_id),
     "",
-    `Created: ${packet.created_at}`,
-    `Work Type: ${packet.work_type}`,
-    `Posture: ${packet.posture}`,
+    "Created: " + (packet.created_at),
+    "Work Type: " + (packet.work_type),
+    "Posture: " + (packet.posture),
     "",
     "Bootstrap is readiness support, not proof of complete understanding.",
     "",
     "## Posture",
     ...(packet.posture_reasons.length === 0
       ? ["- No escalations; posture is normal."]
-      : packet.posture_reasons.map((reason) => `- ${reason}`)),
+      : packet.posture_reasons.map((reason) => "- " + (reason))),
     ...(packet.required_extra_review.length > 0
-      ? ["", "### Required Extra Review", ...packet.required_extra_review.map((entry) => `- ${entry}`)]
+      ? ["", "### Required Extra Review", ...packet.required_extra_review.map((entry) => "- " + (entry))]
       : []),
     ""
   ];
@@ -662,10 +662,10 @@ function renderMarkdown(packet: BootstrapPacket): string {
     sections.push("- None");
   } else {
     for (const claim of packet.claims) {
-      const sources = claim.source_paths.length > 0 ? ` sources=${claim.source_paths.join(",")}` : "";
-      const command = claim.command ? ` command=\`${claim.command}\`` : "";
+      const sources = claim.source_paths.length > 0 ? " sources=" + (claim.source_paths.join(",")) : "";
+      const command = claim.command ? " command=" + (claim.command) : "";
       sections.push(
-        `- [${claim.confidence}/${claim.staleness_risk}] ${claim.claim}${sources}${command}`
+        "- [" + (claim.confidence) + "/" + (claim.staleness_risk) + "] " + (claim.claim) + (sources) + (command)
       );
     }
   }
@@ -676,31 +676,31 @@ function renderMarkdown(packet: BootstrapPacket): string {
 function renderContinuityBlock(continuity: BootstrapContinuity): string[] {
   const lines: string[] = [
     "## Continuity Frame",
-    `- Project: ${continuity.project.name}@${continuity.project.version} — ${continuity.project.description || "no description"}`,
-    `- Stack: ${continuity.stack.runtime}, ${continuity.stack.language}`,
-    `- Key deps: ${continuity.stack.key_deps.length === 0 ? "none" : continuity.stack.key_deps.join(", ")}`,
-    `- Conventions: protocols=${continuity.conventions.has_protocols_dir} instructions=${continuity.conventions.has_instructions_dir} model_config=${continuity.conventions.has_model_config}`,
+    "- Project: " + (continuity.project.name) + "@" + (continuity.project.version) + " — " + (continuity.project.description || "no description"),
+    "- Stack: " + (continuity.stack.runtime) + ", " + (continuity.stack.language),
+    "- Key deps: " + (continuity.stack.key_deps.length === 0 ? "none" : continuity.stack.key_deps.join(", ")),
+    "- Conventions: protocols=" + (continuity.conventions.has_protocols_dir) + " instructions=" + (continuity.conventions.has_instructions_dir) + " model_config=" + (continuity.conventions.has_model_config),
     "",
     "### Active Deployments",
     ...(continuity.active_deployments.length === 0
       ? ["- None"]
       : continuity.active_deployments.map(
           (deployment) =>
-            `- ${deployment.deployment_id} [${deployment.status}] intent=${deployment.intent_id}`
+            "- " + (deployment.deployment_id) + " [" + (deployment.status) + "] intent=" + (deployment.intent_id)
         )),
     "",
     "### Active Tasks",
     ...(continuity.active_tasks.length === 0
       ? ["- None"]
       : continuity.active_tasks.map(
-          (task) => `- ${task.task_id} [${task.status}] ${task.title}${task.blocker ? ` (blocker: ${task.blocker})` : ""}`
+          (task) => "- " + (task.task_id) + " [" + (task.status) + "] " + (task.title) + (task.blocker ? " (blocker: " + (task.blocker) + ")" : "")
         )),
     "",
     "### Recent Artifacts",
     ...(continuity.recent_artifacts.length === 0
       ? ["- None"]
       : continuity.recent_artifacts.map(
-          (artifact) => `- ${artifact.artifact_id} [${artifact.type}] task=${artifact.task_id} path=${artifact.path}`
+          (artifact) => "- " + (artifact.artifact_id) + " [" + (artifact.type) + "] task=" + (artifact.task_id) + " path=" + (artifact.path)
         ))
   ];
   return lines;
@@ -709,26 +709,26 @@ function renderContinuityBlock(continuity: BootstrapContinuity): string[] {
 function renderCounterContextBlock(counter: BootstrapCounterContext): string[] {
   const lines: string[] = [
     "## Counter-Context Frame",
-    `- Git: present=${counter.git.present} commits=${counter.git.has_commits} remote=${counter.git.has_remote} dirty=${counter.git.dirty}${counter.git.status_capped ? " status_capped=true" : ""} top-level untracked entries=${counter.git.untracked_count}${counter.git.untracked_capped ? " (capped)" : ""}${counter.git.branch ? ` branch=${counter.git.branch}` : ""}${counter.git.probe_error ? ` probe_error=${counter.git.probe_error}` : ""}`,
-    `- Hygiene: gitignore=${counter.hygiene.has_gitignore} dist=${counter.hygiene.dist_present} node_modules=${counter.hygiene.node_modules_present}`,
+    "- Git: present=" + (counter.git.present) + " commits=" + (counter.git.has_commits) + " remote=" + (counter.git.has_remote) + " dirty=" + (counter.git.dirty) + (counter.git.status_capped ? " status_capped=true" : "") + " top-level untracked entries=" + (counter.git.untracked_count) + (counter.git.untracked_capped ? " (capped)" : "") + (counter.git.branch ? " branch=" + (counter.git.branch) : "") + (counter.git.probe_error ? " probe_error=" + (counter.git.probe_error) : ""),
+    "- Hygiene: gitignore=" + (counter.hygiene.has_gitignore) + " dist=" + (counter.hygiene.dist_present) + " node_modules=" + (counter.hygiene.node_modules_present),
     "",
     "### Runtime Warnings",
     ...(counter.runtime_warnings.length === 0
       ? ["- None"]
-      : counter.runtime_warnings.map((warning) => `- ${warning}`)),
+      : counter.runtime_warnings.map((warning) => "- " + (warning))),
     "",
     "### Drift Warnings",
     ...(counter.drift_warnings.length === 0
       ? ["- None"]
-      : counter.drift_warnings.map((warning) => `- ${warning}`)),
+      : counter.drift_warnings.map((warning) => "- " + (warning))),
     "",
     "### Parse Failures",
     ...(counter.parse_failures.length === 0
       ? ["- None"]
-      : counter.parse_failures.map((failure) => `- ${failure.path}: ${failure.error}`)),
+      : counter.parse_failures.map((failure) => "- " + (failure.path) + ": " + (failure.error))),
     "",
     "### Not Inspected",
-    ...counter.not_inspected.map((entry) => `- ${entry}`)
+    ...counter.not_inspected.map((entry) => "- " + (entry))
   ];
   return lines;
 }
@@ -741,8 +741,8 @@ async function persistPacket(
 ): Promise<void> {
   const dir = "state/bootstrap";
   await mkdir(join(root, dir), { recursive: true });
-  const mdPath = `${dir}/${packet.bootstrap_id}.md`;
-  const jsonPath = `${dir}/${packet.bootstrap_id}.json`;
+  const mdPath = "" + (dir) + "/" + (packet.bootstrap_id) + ".md";
+  const jsonPath = "" + (dir) + "/" + (packet.bootstrap_id) + ".json";
   await saveText(root, mdPath, markdown);
   await saveJson(root, jsonPath, packet);
   const newEntry: BootstrapIndexEntry = {
@@ -755,7 +755,7 @@ async function persistPacket(
   const nextIndex: BootstrapIndex = BootstrapIndexSchema.parse({
     bootstraps: [...indexBefore.bootstraps, newEntry]
   });
-  await saveJson(root, `${dir}/index.json`, nextIndex);
+  await saveJson(root, "" + (dir) + "/index.json", nextIndex);
 }
 
 async function loadBootstrapIndex(root: string): Promise<BootstrapIndex> {

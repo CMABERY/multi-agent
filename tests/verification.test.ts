@@ -132,12 +132,12 @@ function reviewerJson(persona: string, artifactId = "ART-001", verdict = "pass")
           verdict === "unverifiable"
             ? []
             : [{ artifact_id: artifactId, line_start: 1, line_end: 2 }],
-        rationale: `${persona} ${verdict} rationale`,
+        rationale: "" + (persona) + " " + (verdict) + " rationale",
         confidence: 0.8
       }
     ],
     identified_issues: [],
-    free_form_assessment: `${persona} assessment`
+    free_form_assessment: "" + (persona) + " assessment"
   });
 }
 

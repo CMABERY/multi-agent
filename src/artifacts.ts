@@ -39,7 +39,7 @@ export async function addArtifact(
 }
 
 export async function ensureRunDir(root: string, taskId: string): Promise<string> {
-  const relative = `artifacts/runs/${taskId}`;
+  const relative = "artifacts/runs/" + (taskId);
   await mkdir(join(root, relative), { recursive: true });
   return relative;
 }

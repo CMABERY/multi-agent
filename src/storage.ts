@@ -26,16 +26,16 @@ export async function loadJsonOrDefault<T = any>(
 export async function saveJson(root: string, relativePath: string, value: unknown): Promise<void> {
   const filePath = join(root, relativePath);
   await ensureDir(dirname(filePath));
-  const tmpPath = `${filePath}.tmp`;
-  await writeFile(tmpPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  const tmpPath = "" + (filePath) + ".tmp";
+  await writeFile(tmpPath, "" + (JSON.stringify(value, null, 2)) + "\n", "utf8");
   await rename(tmpPath, filePath);
 }
 
 export async function saveText(root: string, relativePath: string, value: string): Promise<void> {
   const filePath = join(root, relativePath);
   await ensureDir(dirname(filePath));
-  const tmpPath = `${filePath}.tmp`;
-  await writeFile(tmpPath, value.endsWith("\n") ? value : `${value}\n`, "utf8");
+  const tmpPath = "" + (filePath) + ".tmp";
+  await writeFile(tmpPath, value.endsWith("\n") ? value : "" + (value) + "\n", "utf8");
   await rename(tmpPath, filePath);
 }
 

@@ -23,39 +23,39 @@ export async function generateReport(root: string): Promise<string> {
     "# Multi-Agent Workflow Report",
     "",
     "## Intents",
-    ...intents.intents.map((intent) => `- ${intent.intent_id} [${intent.status}]: ${intent.text}`),
+    ...intents.intents.map((intent) => "- " + (intent.intent_id) + " [" + (intent.status) + "]: " + (intent.text)),
     "",
     "## Deployments",
     ...plans.deployment_plans.map(
       (plan) =>
-        `- ${plan.deployment_id} [${plan.status}] intent=${plan.intent_id} approval_required=${plan.approval_required}`
+        "- " + (plan.deployment_id) + " [" + (plan.status) + "] intent=" + (plan.intent_id) + " approval_required=" + (plan.approval_required)
     ),
     "",
     "## Tasks",
     ...tasks.tasks.map(
       (task) =>
-        `- ${task.task_id} [${task.status}] ${task.title} owner=${task.owner_agent_id} executor=${task.executor}`
+        "- " + (task.task_id) + " [" + (task.status) + "] " + (task.title) + " owner=" + (task.owner_agent_id) + " executor=" + (task.executor)
     ),
     "",
     "## Approvals",
     ...approvals.approvals.map(
       (approval) =>
-        `- ${approval.approval_id} ${approval.decision} deployment=${approval.deployment_id} approver=${approval.approver} scope=${approval.scope}`
+        "- " + (approval.approval_id) + " " + (approval.decision) + " deployment=" + (approval.deployment_id) + " approver=" + (approval.approver) + " scope=" + (approval.scope)
     ),
     "",
     "## Reviews",
-    ...reviews.reviews.map((review) => `- ${review.review_id} ${review.status} task=${review.task_id}`),
+    ...reviews.reviews.map((review) => "- " + (review.review_id) + " " + (review.status) + " task=" + (review.task_id)),
     "",
     "## Decisions",
     decisions.trim(),
     "",
     "## Metrics",
-    `- Model Calls: ${metrics.model_calls}`,
-    `- Local Commands: ${metrics.local_commands}`,
-    `- Dry Runs: ${metrics.dry_runs}`,
-    `- Tasks Completed: ${metrics.tasks_completed}`,
-    `- Tasks Failed: ${metrics.tasks_failed}`,
-    `- Estimated Cost USD: ${metrics.estimated_cost_usd.toFixed(4)}`,
+    "- Model Calls: " + (metrics.model_calls),
+    "- Local Commands: " + (metrics.local_commands),
+    "- Dry Runs: " + (metrics.dry_runs),
+    "- Tasks Completed: " + (metrics.tasks_completed),
+    "- Tasks Failed: " + (metrics.tasks_failed),
+    "- Estimated Cost USD: " + (metrics.estimated_cost_usd.toFixed(4)),
     ""
   ].join("\n");
 }

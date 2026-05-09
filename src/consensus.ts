@@ -24,7 +24,7 @@ export async function computeConsensus(
   const task = board.tasks.find((entry) => entry.task_id === input.taskId);
   const taskReviews = reviewLog.reviews.filter((review) => review.task_id === input.taskId);
   if (taskReviews.length === 0) {
-    throw new Error(`No structured reviews found for ${input.taskId}.`);
+    throw new Error("No structured reviews found for " + (input.taskId) + ".");
   }
   const reviews = latestReviewsByPersona(taskReviews);
   const criteria = criteriaForTask(task, reviews);
@@ -215,7 +215,7 @@ function dedupeCitations(citations: Citation[]): Citation[] {
   const seen = new Set<string>();
   const deduped: Citation[] = [];
   for (const citation of citations) {
-    const key = `${citation.artifact_id}:${citation.line_start}:${citation.line_end}`;
+    const key = "" + (citation.artifact_id) + ":" + (citation.line_start) + ":" + (citation.line_end);
     if (seen.has(key)) continue;
     seen.add(key);
     deduped.push(citation);

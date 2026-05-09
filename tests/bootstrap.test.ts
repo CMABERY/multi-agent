@@ -60,7 +60,7 @@ async function runGitInit(root: string, args: string[]): Promise<void> {
     child.on("error", reject);
     child.on("close", (code) => {
       if (code === 0) resolvePromise();
-      else reject(new Error(`git ${args.join(" ")} exited ${code}: ${stderr}`));
+      else reject(new Error("git " + (args.join(" ")) + " exited " + (code) + ": " + (stderr)));
     });
   });
 }
@@ -212,6 +212,7 @@ describe("bootstrap posture escalations", () => {
     });
     expect(widescan.posture).toBe("governed");
     expect(widescan.requiredExtraReview.length).toBeGreaterThan(0);
+    expect(widescan.requiredExtraReview.join("\n")).not.toContain(String.fromCharCode(96));
 
     const ordinary = evaluatePosture({
       continuity: minimalContinuity({ activeRunning: false }),
@@ -300,13 +301,13 @@ describe("bootstrap posture escalations", () => {
 
       await mkdir(join(root, "tracked"), { recursive: true });
       for (let index = 0; index < 750; index += 1) {
-        await writeFile(join(root, "tracked", `file-${String(index).padStart(4, "0")}.txt`), "baseline\n");
+        await writeFile(join(root, "tracked", "file-" + (String(index).padStart(4, "0")) + ".txt"), "baseline\n");
       }
       await runGitInit(root, ["add", "tracked"]);
       await runGitInit(root, ["commit", "-m", "add tracked files"]);
 
       for (let index = 0; index < 750; index += 1) {
-        await writeFile(join(root, "tracked", `file-${String(index).padStart(4, "0")}.txt`), "modified\n");
+        await writeFile(join(root, "tracked", "file-" + (String(index).padStart(4, "0")) + ".txt"), "modified\n");
       }
 
       const result = await runBootstrap(root, { workType: "ordinary" });
@@ -324,7 +325,7 @@ describe("bootstrap posture escalations", () => {
       await initCommittedRepo(root);
 
       for (let index = 0; index < 14; index += 1) {
-        await writeFile(join(root, `untracked-${String(index).padStart(2, "0")}.txt`), "new\n");
+        await writeFile(join(root, "untracked-" + (String(index).padStart(2, "0")) + ".txt"), "new\n");
       }
 
       const result = await runBootstrap(root, { workType: "ordinary" });
@@ -344,6 +345,7 @@ describe("bootstrap output shapes", () => {
       expect(() => BootstrapPacketSchema.parse(result.packet)).not.toThrow();
       expect(result.markdown).toContain("Bootstrap is readiness support");
       expect(result.markdown).toContain("## Posture");
+      expect(result.markdown).not.toContain(String.fromCharCode(96));
     });
   });
 
@@ -387,11 +389,11 @@ describe("bootstrap persistence", () => {
     await withWorkspace(async (root) => {
       await initWorkspace(root);
       const first = await runBootstrap(root, { workType: "ordinary", persist: true });
-      const firstMd = await readFile(join(root, `state/bootstrap/${first.packet.bootstrap_id}.md`), "utf8");
+      const firstMd = await readFile(join(root, "state/bootstrap/" + (first.packet.bootstrap_id) + ".md"), "utf8");
       const second = await runBootstrap(root, { workType: "ordinary", persist: true });
       expect(first.packet.bootstrap_id).toBe("BS-001");
       expect(second.packet.bootstrap_id).toBe("BS-002");
-      const firstMdAgain = await readFile(join(root, `state/bootstrap/${first.packet.bootstrap_id}.md`), "utf8");
+      const firstMdAgain = await readFile(join(root, "state/bootstrap/" + (first.packet.bootstrap_id) + ".md"), "utf8");
       expect(firstMdAgain).toBe(firstMd);
       const indexRaw = await readFile(join(root, "state/bootstrap/index.json"), "utf8");
       const index = JSON.parse(indexRaw) as { bootstraps: Array<{ bootstrap_id: string }> };

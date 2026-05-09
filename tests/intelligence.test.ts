@@ -126,9 +126,9 @@ function performancePlanIssueCodes(
 async function seedConsensus(root: string, records: Array<Record<string, unknown>>): Promise<void> {
   await saveJson(root, "state/consensus.json", {
     consensus_records: records.map((record, index) => ({
-      consensus_id: `C-${String(index + 1).padStart(3, "0")}`,
-      task_id: `T-${String(index + 1).padStart(3, "0")}`,
-      review_ids: [`R-${String(index + 1).padStart(3, "0")}`],
+      consensus_id: "C-" + (String(index + 1).padStart(3, "0")),
+      task_id: "T-" + (String(index + 1).padStart(3, "0")),
+      review_ids: ["R-" + (String(index + 1).padStart(3, "0"))],
       reviewer_count: 1,
       per_criterion: [
         {

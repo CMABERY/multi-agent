@@ -54,13 +54,13 @@ export async function runDeployment(
 ): Promise<{ completed: string[]; failed: string[] }> {
   const plans = DeploymentPlanStoreSchema.parse(await loadJson(root, "state/deployment_plan.json"));
   const plan = plans.deployment_plans.find((entry) => entry.deployment_id === input.deploymentId);
-  if (!plan) throw new Error(`Deployment not found: ${input.deploymentId}`);
+  if (!plan) throw new Error("Deployment not found: " + (input.deploymentId));
 
   if (plan.approval_required && !(await hasApprovedDeployment(root, plan))) {
-    throw new Error(`Deployment ${plan.deployment_id} requires explicit approval before execution.`);
+    throw new Error("Deployment " + (plan.deployment_id) + " requires explicit approval before execution.");
   }
   if (plan.status !== "approved" && !input.rerun) {
-    throw new Error(`Deployment ${plan.deployment_id} is not approved. Current status: ${plan.status}`);
+    throw new Error("Deployment " + (plan.deployment_id) + " is not approved. Current status: " + (plan.status));
   }
 
   const board = TaskBoardSchema.parse(await loadJson(root, "state/task_board.json"));
@@ -69,7 +69,7 @@ export async function runDeployment(
   const completed: string[] = [];
   const failed: string[] = [];
   if (input.rerun && plan.status === "running") {
-    throw new Error(`Deployment ${plan.deployment_id} is already running.`);
+    throw new Error("Deployment " + (plan.deployment_id) + " is already running.");
   }
   plan.status = "running";
   plan.updated_at = nowIso();
@@ -77,9 +77,9 @@ export async function runDeployment(
 
   for (const assignment of plan.assignments) {
     const task = board.tasks.find((entry) => entry.task_id === assignment.task_id);
-    if (!task) throw new Error(`Task not found: ${assignment.task_id}`);
+    if (!task) throw new Error("Task not found: " + (assignment.task_id));
     const agent = registry.agents.find((entry) => entry.agent_id === assignment.agent_id);
-    if (!agent) throw new Error(`Agent not found: ${assignment.agent_id}`);
+    if (!agent) throw new Error("Agent not found: " + (assignment.agent_id));
     const unmetDependency = findUnmetDependency(board, task);
     if (unmetDependency) {
       await markTask(board, root, task, "blocked", unmetDependency.reason);
@@ -91,7 +91,7 @@ export async function runDeployment(
       await markTask(board, root, task, "running");
       const runDir = await ensureRunDir(root, task.task_id);
       const packet = await buildDelegationPacket(root, task, assignment, agent);
-      await saveText(root, `${runDir}/delegation_packet.md`, packet);
+      await saveText(root, "" + (runDir) + "/delegation_packet.md", packet);
 
       if (assignment.executor === "dry_run") {
         await runDryRun(root, task, runDir);
@@ -129,14 +129,14 @@ function preflightDeployment(
 ): void {
   for (const assignment of assignments) {
     const task = board.tasks.find((entry) => entry.task_id === assignment.task_id);
-    if (!task) throw new Error(`Task not found: ${assignment.task_id}`);
+    if (!task) throw new Error("Task not found: " + (assignment.task_id));
     const agent = registry.agents.find((entry) => entry.agent_id === assignment.agent_id);
-    if (!agent) throw new Error(`Agent not found: ${assignment.agent_id}`);
+    if (!agent) throw new Error("Agent not found: " + (assignment.agent_id));
     if (assignment.executor !== "local_command") continue;
-    if (!execute) throw new Error(`Local command task ${task.task_id} requires --execute.`);
-    if (!task.command) throw new Error(`Local command task ${task.task_id} does not define a command.`);
+    if (!execute) throw new Error("Local command task " + (task.task_id) + " requires --execute.");
+    if (!task.command) throw new Error("Local command task " + (task.task_id) + " does not define a command.");
     if (!agent.command_allowlist.includes(task.command.command)) {
-      throw new Error(`Command is not allowlisted for ${agent.agent_id}: ${task.command.command}`);
+      throw new Error("Command is not allowlisted for " + (agent.agent_id) + ": " + (task.command.command));
     }
   }
 }
@@ -165,14 +165,14 @@ function findUnmetDependency(
     if (upstreamFailure) {
       return {
         taskId: upstreamFailure,
-        reason: `Upstream task ${upstreamFailure} failed`
+        reason: "Upstream task " + (upstreamFailure) + " failed"
       };
     }
     const dependencyTask = board.tasks.find((entry) => entry.task_id === dependency);
     if (dependencyTask?.status !== "completed" && dependencyTask?.status !== "approved") {
       return {
         taskId: dependency,
-        reason: `Dependency not completed: ${dependency}`
+        reason: "Dependency not completed: " + (dependency)
       };
     }
   }
@@ -180,15 +180,15 @@ function findUnmetDependency(
 }
 
 async function runDryRun(root: string, task: Task, runDir: string): Promise<void> {
-  await saveJson(root, `${runDir}/adapter_result.json`, {
+  await saveJson(root, "" + (runDir) + "/adapter_result.json", {
     executor: "dry_run",
     status: "delegation_packet_emitted"
   });
   await addArtifact(root, {
     taskId: task.task_id,
-    path: `${runDir}/delegation_packet.md`,
+    path: "" + (runDir) + "/delegation_packet.md",
     type: "delegation_packet",
-    description: `Delegation packet for ${task.task_id}`
+    description: "Delegation packet for " + (task.task_id)
   });
   await incrementMetric(root, "dry_runs");
 }
@@ -204,33 +204,33 @@ async function runModelAgent(
   const client = modelClient ?? (await createDefaultModelClient(root));
   const contextPacket = await buildScopedContextPacket(root, task);
   const model = selectModel(config, agent.model_tier ?? task.model_tier, agent.model);
-  await saveJson(root, `${runDir}/model_request_summary.json`, {
+  await saveJson(root, "" + (runDir) + "/model_request_summary.json", {
     model,
     agent_id: agent.agent_id,
     task_id: task.task_id
   });
   const output = await client.createResponse({
     model,
-    instructions: `You are ${agent.role}. Complete the assigned task using only the scoped context packet.`,
+    instructions: "You are " + (agent.role) + ". Complete the assigned task using only the scoped context packet.",
     input: contextPacket,
     maxOutputTokens: config.max_output_tokens
   });
   const responseText = normalizeModelOutputForAcceptance(task, output.text);
-  await saveText(root, `${runDir}/response_output.md`, responseText);
+  await saveText(root, "" + (runDir) + "/response_output.md", responseText);
   await incrementMetric(root, "model_calls", estimateModelCostUsd(config, model, output.usage));
   if (output.truncated) {
-    await saveJson(root, `${runDir}/output_truncated.json`, {
+    await saveJson(root, "" + (runDir) + "/output_truncated.json", {
       reason: output.reason ?? output.status ?? "incomplete",
       max_output_tokens: config.max_output_tokens,
       response_chars: responseText.length
     });
-    throw new Error(`Model response truncated at max_output_tokens (${config.max_output_tokens}).`);
+    throw new Error("Model response truncated at max_output_tokens (" + (config.max_output_tokens) + ").");
   }
   await addArtifact(root, {
     taskId: task.task_id,
-    path: `${runDir}/response_output.md`,
+    path: "" + (runDir) + "/response_output.md",
     type: "model_output",
-    description: `Model output for ${task.task_id}`
+    description: "Model output for " + (task.task_id)
   });
 }
 
@@ -242,26 +242,26 @@ async function runLocalCommand(
   execute: boolean
 ): Promise<void> {
   if (!execute) {
-    throw new Error(`Local command task ${task.task_id} requires --execute.`);
+    throw new Error("Local command task " + (task.task_id) + " requires --execute.");
   }
   if (!task.command) {
-    throw new Error(`Local command task ${task.task_id} does not define a command.`);
+    throw new Error("Local command task " + (task.task_id) + " does not define a command.");
   }
   if (!agent.command_allowlist.includes(task.command.command)) {
-    throw new Error(`Command is not allowlisted for ${agent.agent_id}: ${task.command.command}`);
+    throw new Error("Command is not allowlisted for " + (agent.agent_id) + ": " + (task.command.command));
   }
   const result = await spawnCommand(task.command.command, task.command.args);
-  await saveText(root, `${runDir}/command_output.txt`, result.stdout);
-  await saveText(root, `${runDir}/command_error.txt`, result.stderr);
-  await saveJson(root, `${runDir}/command_result.json`, { exit_code: result.exitCode });
+  await saveText(root, "" + (runDir) + "/command_output.txt", result.stdout);
+  await saveText(root, "" + (runDir) + "/command_error.txt", result.stderr);
+  await saveJson(root, "" + (runDir) + "/command_result.json", { exit_code: result.exitCode });
   if (result.exitCode !== 0) {
-    throw new Error(`Command exited with code ${result.exitCode}`);
+    throw new Error("Command exited with code " + (result.exitCode));
   }
   await addArtifact(root, {
     taskId: task.task_id,
-    path: `${runDir}/command_output.txt`,
+    path: "" + (runDir) + "/command_output.txt",
     type: "command_output",
-    description: `Command stdout for ${task.task_id}`
+    description: "Command stdout for " + (task.task_id)
   });
   await incrementMetric(root, "local_commands");
 }
@@ -277,14 +277,14 @@ async function spawnStructuredReviews(
     await addChatDefect(
       root,
       task.task_id,
-      `Task ${task.task_id} requires review but has no model_output or command_output artifact.`
+      "Task " + (task.task_id) + " requires review but has no model_output or command_output artifact."
     );
     return;
   }
 
   const reviewers = selectReviewers(agents, task);
   if (reviewers.length === 0) {
-    await addChatDefect(root, task.task_id, `Task ${task.task_id} requires review but no reviewer personas are registered.`);
+    await addChatDefect(root, task.task_id, "Task " + (task.task_id) + " requires review but no reviewer personas are registered.");
     return;
   }
   for (const reviewer of reviewers) {
@@ -328,7 +328,7 @@ async function runStructuredReviewer(
   const model = selectModel(config, reviewer.model_tier ?? task.model_tier, reviewer.model);
   const input = await buildReviewerInput(root, task, deliverable);
   const instructions = buildReviewerInstructions(persona, task);
-  await saveJson(root, `${runDir}/review_${persona}_request_summary.json`, {
+  await saveJson(root, "" + (runDir) + "/review_" + (persona) + "_request_summary.json", {
     model,
     agent_id: reviewer.agent_id,
     task_id: task.task_id,
@@ -341,7 +341,7 @@ async function runStructuredReviewer(
     maxOutputTokens: config.max_output_tokens
   });
   await incrementMetric(root, "model_calls", estimateModelCostUsd(config, model, output.usage));
-  const markdownPath = `${runDir}/review_${persona}.md`;
+  const markdownPath = "" + (runDir) + "/review_" + (persona) + ".md";
   await saveText(root, markdownPath, output.text);
   const parsed = parseReviewerOutput(output.text, persona, task);
   const malformed = parsed.malformed || output.truncated;
@@ -349,7 +349,7 @@ async function runStructuredReviewer(
     await addChatDefect(
       root,
       task.task_id,
-      `Reviewer ${reviewer.agent_id} produced ${output.truncated ? "truncated" : "malformed"} structured review output.`
+      "Reviewer " + (reviewer.agent_id) + " produced " + (output.truncated ? "truncated" : "malformed") + " structured review output."
     );
   }
   const review = await recordReview(root, {
@@ -363,26 +363,26 @@ async function runStructuredReviewer(
     malformed: parsed.malformed,
     truncated: output.truncated
   });
-  const jsonPath = `${runDir}/review_${persona}.json`;
+  const jsonPath = "" + (runDir) + "/review_" + (persona) + ".json";
   await saveJson(root, jsonPath, review);
   await addArtifact(root, {
     taskId: task.task_id,
     path: markdownPath,
     type: "review_evidence",
-    description: `Reviewer ${persona} evidence for ${task.task_id}`
+    description: "Reviewer " + (persona) + " evidence for " + (task.task_id)
   });
   await addArtifact(root, {
     taskId: task.task_id,
     path: jsonPath,
     type: "structured_review",
-    description: `Structured ${persona} review for ${task.task_id}`
+    description: "Structured " + (persona) + " review for " + (task.task_id)
   });
 }
 
 async function buildReviewerInput(root: string, task: Task, deliverable: Artifact): Promise<string> {
   const reviewTask = {
     ...task,
-    title: `Review ${task.title}`,
+    title: "Review " + (task.title),
     owner_role: "Reviewer Agent",
     output_required: "Structured review"
   };
@@ -390,7 +390,7 @@ async function buildReviewerInput(root: string, task: Task, deliverable: Artifac
   const deliverableContent = await readArtifactContent(root, deliverable, true);
   return [
     context,
-    `--- Dependency Artifact ${deliverable.artifact_id}: ${deliverable.path} ---`,
+    "--- Dependency Artifact " + (deliverable.artifact_id) + ": " + (deliverable.path) + " ---",
     deliverableContent,
     ""
   ].join("\n");
@@ -412,7 +412,7 @@ function parseReviewerOutput(
       normalizeReviewerOutput(JSON.parse(extractJsonText(text)))
     );
     if (parsed.reviewer_persona && parsed.reviewer_persona !== expectedPersona) {
-      return malformedReview(`Reviewer persona mismatch: ${parsed.reviewer_persona}`);
+      return malformedReview("Reviewer persona mismatch: " + (parsed.reviewer_persona));
     }
     const expectedCriteria = new Set(task.acceptance_criteria);
     const actualCriteria = parsed.per_criterion.map((entry) => entry.criterion);
@@ -464,7 +464,7 @@ function normalizeReviewIssue(value: unknown, index: number): unknown {
     issue_id:
       stringField(value, "issue_id") ??
       stringField(value, "issueId") ??
-      `RI-${String(index + 1).padStart(3, "0")}`,
+      "RI-" + (String(index + 1).padStart(3, "0")),
     severity: normalizeIssueSeverity(stringField(value, "severity")),
     category: stringField(value, "category") ?? "review_issue",
     description,
@@ -492,10 +492,10 @@ function citationEvidence(citations: unknown[]): string | undefined {
       const lineStart = numberField(citation, "line_start");
       const lineEnd = numberField(citation, "line_end");
       if (!artifactId || lineStart === undefined || lineEnd === undefined) return undefined;
-      return `${artifactId}:L${lineStart}-L${lineEnd}`;
+      return "" + (artifactId) + ":L" + (lineStart) + "-L" + (lineEnd);
     })
     .filter((range): range is string => Boolean(range));
-  return ranges.length > 0 ? `Cited artifact ranges: ${ranges.join(", ")}` : undefined;
+  return ranges.length > 0 ? "Cited artifact ranges: " + (ranges.join(", ")) : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -531,7 +531,7 @@ function deriveReviewStatus(perCriterion: Array<z.infer<typeof PerCriterionVerdi
 
 function extractJsonText(text: string): string {
   const trimmed = text.trim();
-  const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(trimmed);
+  const fenced = /^\x60\x60\x60(?:json)?\s*([\s\S]*?)\s*\x60\x60\x60$/i.exec(trimmed);
   return fenced?.[1] ?? trimmed;
 }
 
@@ -543,23 +543,23 @@ async function buildDelegationPacket(
 ): Promise<string> {
   const acceptanceContract = buildAcceptanceContract(task);
   return [
-    `TASK: ${task.title}`,
-    `ROLE: ${task.owner_role}`,
-    `GOAL: ${task.output_required}`,
-    `INPUTS: ${task.input_context.length > 0 ? task.input_context.join(", ") : "none"}`,
+    "TASK: " + (task.title),
+    "ROLE: " + (task.owner_role),
+    "GOAL: " + (task.output_required),
+    "INPUTS: " + (task.input_context.length > 0 ? task.input_context.join(", ") : "none"),
     "DO NOT USE: Full conversation history, unlisted state files, external actions without approval.",
-    `OUTPUT FORMAT: ${task.output_required}`,
+    "OUTPUT FORMAT: " + (task.output_required),
     "ACCEPTANCE CRITERIA:",
-    ...task.acceptance_criteria.map((criterion) => `- ${criterion}`),
+    ...task.acceptance_criteria.map((criterion) => "- " + (criterion)),
     ...(acceptanceContract.length > 0 ? ["", "ACCEPTANCE CONTRACT:", ...acceptanceContract] : []),
-    `KNOWN RISKS: ${task.risk_level}`,
-    `DEPENDENCIES: ${task.dependencies.length > 0 ? task.dependencies.join(", ") : "none"}`,
-    `REPORTING CHANNEL: artifacts/runs/${task.task_id}`,
-    `ASSIGNED AGENT: ${assignment.agent_id}`,
-    `EXECUTOR: ${assignment.executor}`,
-    `MODEL TIER: ${assignment.model_tier}`,
-    `ROUTING REASON: ${assignment.reason}`,
-    `AGENT PERMISSIONS: ${JSON.stringify(agent.permissions)}`
+    "KNOWN RISKS: " + (task.risk_level),
+    "DEPENDENCIES: " + (task.dependencies.length > 0 ? task.dependencies.join(", ") : "none"),
+    "REPORTING CHANNEL: artifacts/runs/" + (task.task_id),
+    "ASSIGNED AGENT: " + (assignment.agent_id),
+    "EXECUTOR: " + (assignment.executor),
+    "MODEL TIER: " + (assignment.model_tier),
+    "ROUTING REASON: " + (assignment.reason),
+    "AGENT PERMISSIONS: " + (JSON.stringify(agent.permissions))
   ].join("\n");
 }
 
@@ -567,24 +567,24 @@ async function buildScopedContextPacket(root: string, task: Task): Promise<strin
   const lineNumberDependencyArtifacts = isReviewOrSynthesisTask(task);
   const acceptanceContract = buildAcceptanceContract(task);
   const sections = [
-    `TASK: ${task.title}`,
-    `TASK ID: ${task.task_id}`,
-    `ROLE: ${task.owner_role}`,
-    `OUTPUT REQUIRED: ${task.output_required}`,
+    "TASK: " + (task.title),
+    "TASK ID: " + (task.task_id),
+    "ROLE: " + (task.owner_role),
+    "OUTPUT REQUIRED: " + (task.output_required),
     "ACCEPTANCE CRITERIA:",
-    ...task.acceptance_criteria.map((criterion) => `- ${criterion}`),
+    ...task.acceptance_criteria.map((criterion) => "- " + (criterion)),
     ...(acceptanceContract.length > 0 ? ["", "ACCEPTANCE CONTRACT:", ...acceptanceContract] : []),
     ""
   ];
   for (const contextPath of task.input_context) {
     const safePath = resolveSafe(root, contextPath);
     const content = await readFile(safePath, "utf8");
-    sections.push(`--- ${contextPath} ---`, content, "");
+    sections.push("--- " + (contextPath) + " ---", content, "");
   }
   const dependencyArtifacts = await collectDependencyArtifacts(root, task);
   for (const artifact of dependencyArtifacts) {
     const content = await readArtifactContent(root, artifact, lineNumberDependencyArtifacts);
-    sections.push(`--- Dependency Artifact ${artifact.artifact_id}: ${artifact.path} ---`, content, "");
+    sections.push("--- Dependency Artifact " + (artifact.artifact_id) + ": " + (artifact.path) + " ---", content, "");
   }
   return sections.join("\n");
 }
@@ -626,7 +626,7 @@ function normalizeModelOutputForAcceptance(task: Task, text: string): string {
   return text
     .split("\n")
     .map((line) => line.replace(/^(\s*-\s*)(Latency|Cost|Reliability):\s*/i, (_match, prefix: string, dimension: string) => {
-      return `${prefix}Tradeoffs — ${normalizeTradeoffDimension(dimension)}: `;
+      return "" + (prefix) + "Tradeoffs — " + (normalizeTradeoffDimension(dimension)) + ": ";
     }))
     .join("\n");
 }
@@ -660,7 +660,7 @@ function lineNumberContent(content: string): string {
   const normalized = content.endsWith("\n") ? content.slice(0, -1) : content;
   return normalized
     .split("\n")
-    .map((line, index) => `L${String(index + 1).padStart(3, "0")}: ${line}`)
+    .map((line, index) => "L" + (String(index + 1).padStart(3, "0")) + ": " + (line))
     .join("\n");
 }
 
@@ -690,7 +690,7 @@ function resolveSafe(root: string, relativePath: string): string {
   const absolute = resolve(root, normalized);
   const workspace = resolve(root);
   if (relative(workspace, absolute).startsWith("..")) {
-    throw new Error(`Context path escapes workspace: ${relativePath}`);
+    throw new Error("Context path escapes workspace: " + (relativePath));
   }
   return absolute;
 }
@@ -721,7 +721,7 @@ async function resolveChatBlockers(root: string, taskId: string): Promise<void> 
   for (const message of chat.messages) {
     if (message.task_id !== taskId || message.type !== "blocker" || !message.requires_action) continue;
     message.requires_action = false;
-    message.summary = `[RESOLVED ${resolvedAt}] ${message.summary}`;
+    message.summary = "[RESOLVED " + (resolvedAt) + "] " + (message.summary);
     changed = true;
   }
   if (changed) await saveJson(root, "state/chat.json", chat);

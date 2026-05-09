@@ -1,71 +1,63 @@
 # MAW Operator Manual
 
-This manual is the operating surface for the local MAW CLI. It covers every command currently exposed by `src/cli.ts`, the inputs each command accepts, the state files it reads and writes, and the main use-cases an operator is expected to run.
+This manual is the operating surface for the local MAW CLI. It covers every command currently exposed by src/cli.ts, the inputs each command accepts, the state files it reads and writes, and the main use-cases an operator is expected to run.
 
 For scenario walkthroughs and troubleshooting demonstrations, use [operational-demonstrations.md](operational-demonstrations.md). This manual is the reference surface; the demonstration suite shows end-to-end operator practice.
 
 Examples use:
 
-```powershell
-node dist/src/index.js <command>
-```
+    node dist/src/index.js <command>
 
-If the package binary is linked or installed, replace `node dist/src/index.js` with `maw`.
+If the package binary is linked or installed, replace node dist/src/index.js with maw.
 
-Do not run subcommand names by themselves. For example, `intent create` is a command label inside MAW, not a PowerShell executable. In this checkout, run:
+Do not run subcommand names by themselves. For example, intent create is a command label inside MAW, not a PowerShell executable. In this checkout, run:
 
-```powershell
-node .\dist\src\index.js intent create --text "Build a verified demo artifact."
-```
+    node .\dist\src\index.js intent create --text "Build a verified demo artifact."
 
 ## Operating Model
 
 MAW is a local, file-backed multi-agent workflow runtime. The CLI reads and writes JSON and Markdown under the current working directory:
 
-- `state/` contains workflow state, plans, approvals, reviews, consensus, scores, memory, and metrics.
-- `artifacts/` contains indexed task outputs and run artifacts.
-- `protocols/` contains durable protocol templates.
-- `instructions/` contains durable role instruction templates.
-- `dist/` contains built JavaScript used by the CLI examples in this manual.
+- state/ contains workflow state, plans, approvals, reviews, consensus, scores, memory, and metrics.
+- artifacts/ contains indexed task outputs and run artifacts.
+- protocols/ contains durable protocol templates.
+- instructions/ contains durable role instruction templates.
+- dist/ contains built JavaScript used by the CLI examples in this manual.
 
-All commands operate on `process.cwd()`. Run commands from the workspace root unless you intentionally want to operate on a different workspace.
+All commands operate on process.cwd(). Run commands from the workspace root unless you intentionally want to operate on a different workspace.
 
 ## Prerequisites
 
 Install and build:
 
-```powershell
-npm install
-npm run build
-```
+    npm install
+    npm run build
 
-Model-backed commands require an API key in the environment variable named by `state/model_config.json`. The default is `OPENAI_API_KEY`.
+Model-backed commands require an API key in the environment variable named by state/model_config.json. The default is OPENAI_API_KEY.
 
-```powershell
-$env:OPENAI_API_KEY = "sk-..."
-```
+    $env:OPENAI_API_KEY = "sk-..."
 
 Commands that call a model:
 
-- `orchestrate`
-- `run` when any assignment uses `model_agent`
-- automatic structured reviews spawned by `run`
+- orchestrate
+- run when any assignment uses model_agent
+- automatic structured reviews spawned by run
 
 Commands that do not require a model key:
 
-- `init`
-- `intent create`
-- `approval record`
-- `review record`
-- `consensus compute`
-- `migrate`
-- `validate`
-- `score`
-- `plan-check`
-- `context-check`
-- `retrospective`, unless it needs to compute missing score over state that triggers no model calls
-- `performance update`
-- `report`
+- init
+- intent create
+- approval record
+- review record
+- consensus compute
+- migrate
+- validate
+- score
+- plan-check
+- context-check
+- retrospective, unless it needs to compute missing score over state that triggers no model calls
+- performance update
+- report
 
 ## Core Concepts
 
@@ -73,34 +65,34 @@ Commands that do not require a model key:
 
 MAW uses stable local IDs:
 
-- Intents: `I-001`, `I-002`
-- Deployments: `DP-001`, `DP-002`
-- Tasks: `T-001`, `T-002`
-- Approvals: `AP-001`, `AP-002`
-- Reviews: `R-001`, `R-002`
-- Consensus records: `C-001`, `C-002`
-- Workflow scores: `WS-001`, `WS-002`
-- Plan checks: `PC-001`, `PC-002`
-- Context checks: `CC-001`, `CC-002`
-- Learning rules: `LR-001`, `LR-002`
-- Retrospectives: `RET-001`, `RET-002`
-- Artifacts: `ART-001`, `ART-002`
+- Intents: I-001, I-002
+- Deployments: DP-001, DP-002
+- Tasks: T-001, T-002
+- Approvals: AP-001, AP-002
+- Reviews: R-001, R-002
+- Consensus records: C-001, C-002
+- Workflow scores: WS-001, WS-002
+- Plan checks: PC-001, PC-002
+- Context checks: CC-001, CC-002
+- Learning rules: LR-001, LR-002
+- Retrospectives: RET-001, RET-002
+- Artifacts: ART-001, ART-002
 
 ### Executors
 
 Tasks and assignments use one executor:
 
-- `model_agent`: calls the configured model and stores `response_output.md`.
-- `local_command`: runs an allowlisted local command only when `--execute` is supplied.
-- `dry_run`: emits a delegation packet and increments dry-run metrics. It is not valid for real deliverable tasks.
+- model_agent: calls the configured model and stores response_output.md.
+- local_command: runs an allowlisted local command only when --execute is supplied.
+- dry_run: emits a delegation packet and increments dry-run metrics. It is not valid for real deliverable tasks.
 
 ### Risk Levels
 
 Risk levels are:
 
-- `low`
-- `medium`
-- `high`
+- low
+- medium
+- high
 
 Risk affects reviewer fanout for review-required deliverables:
 
@@ -110,55 +102,55 @@ Risk affects reviewer fanout for review-required deliverables:
 
 ### Honest Verification
 
-`verified_useful_outputs` is consensus-backed. It counts review-required tasks only when the load-bearing consensus record for the task has `overall_verdict: "pass"`.
+verified_useful_outputs is consensus-backed. It counts review-required tasks only when the load-bearing consensus record for the task has overall_verdict: "pass".
 
-Raw manual review enum statuses are not load-bearing. `review record` intentionally stores malformed abstaining reviews, because the CLI cannot collect the full structured evidence shape.
+Raw manual review enum statuses are not load-bearing. review record intentionally stores malformed abstaining reviews, because the CLI cannot collect the full structured evidence shape.
 
 ### Performance-Aware Routing
 
-Agent performance is rebuilt from `state/performance_ledger.json` by `performance update`. The current implementation derives review outcomes from load-bearing consensus:
+Agent performance is rebuilt from state/performance_ledger.json by performance update. The current implementation derives review outcomes from load-bearing consensus:
 
-- Consensus pass increments `review_passes`.
-- Consensus fail, split, or insufficient increments `review_failures`.
+- Consensus pass increments review_passes.
+- Consensus fail, split, or insufficient increments review_failures.
 
 The orchestrator prompt surfaces performance for agents with nonzero assignment history, and pre-flight plan checks reject bad risk routing with high-severity issues.
 
 ## Default Workspace Files
 
-`init` creates these state files if missing:
+init creates these state files if missing:
 
-- `state/intent_queue.json`
-- `state/task_board.json`
-- `state/deployment_plan.json`
-- `state/agent_registry.json`
-- `state/model_config.json`
-- `state/chat.json`
-- `state/review_log.json`
-- `state/consensus.json`
-- `state/approvals.json`
-- `state/metrics.json`
-- `state/workflow_score.json`
-- `state/plan_checks.json`
-- `state/context_checks.json`
-- `state/learning_memory.json`
-- `state/retrospective_index.json`
-- `state/performance_ledger.json`
-- `state/prompt_contract.md`
-- `state/decision_log.md`
-- `artifacts/artifact_index.json`
+- state/intent_queue.json
+- state/task_board.json
+- state/deployment_plan.json
+- state/agent_registry.json
+- state/model_config.json
+- state/chat.json
+- state/review_log.json
+- state/consensus.json
+- state/approvals.json
+- state/metrics.json
+- state/workflow_score.json
+- state/plan_checks.json
+- state/context_checks.json
+- state/learning_memory.json
+- state/retrospective_index.json
+- state/performance_ledger.json
+- state/prompt_contract.md
+- state/decision_log.md
+- artifacts/artifact_index.json
 
 It also creates protocol and instruction templates.
 
 Default agents in a fresh workspace:
 
-- `orchestrator_1`: model agent, high tier
-- `researcher_1`: model agent, mid tier
-- `builder_1`: dry-run agent, mid tier
-- `reviewer_skeptical`: reviewer persona `skeptical`, high tier
-- `reviewer_completeness`: reviewer persona `completeness`, high tier
-- `reviewer_rigor`: reviewer persona `rigor`, high tier
+- orchestrator_1: model agent, high tier
+- researcher_1: model agent, mid tier
+- builder_1: dry-run agent, mid tier
+- reviewer_skeptical: reviewer persona skeptical, high tier
+- reviewer_completeness: reviewer persona completeness, high tier
+- reviewer_rigor: reviewer persona rigor, high tier
 
-Existing files are not overwritten by `init`.
+Existing files are not overwritten by init.
 
 ## Full CLI Surface
 
@@ -166,17 +158,15 @@ Existing files are not overwritten by `init`.
 
 Use these to inspect the binary:
 
-```powershell
-node dist/src/index.js --help
-node dist/src/index.js --version
-node dist/src/index.js help <command>
-```
+    node dist/src/index.js --help
+    node dist/src/index.js --version
+    node dist/src/index.js help <command>
 
 Inputs:
 
-- `--help`: optional, prints command help.
-- `--version`: optional, prints package CLI version.
-- `help <command>`: optional command path such as `intent`, `intent create`, or `score`.
+- --help: optional, prints command help.
+- --version: optional, prints package CLI version.
+- help <command>: optional command path such as intent, intent create, or score.
 
 State effects: none.
 
@@ -186,19 +176,17 @@ Exit behavior:
 
 ## Command Reference
 
-### `init`
+### init
 
 Initialize a workspace in the current directory.
 
-```powershell
-node dist/src/index.js init
-```
+    node dist/src/index.js init
 
 Inputs: none.
 
 Writes:
 
-- Creates missing `state/`, `artifacts/`, `protocols/`, and `instructions/` files.
+- Creates missing state/, artifacts/, protocols/, and instructions/ files.
 
 Does not:
 
@@ -213,44 +201,38 @@ Use-cases:
 
 Expected output:
 
-```text
-Initialized multi-agent workflow workspace.
-```
+    Initialized multi-agent workflow workspace.
 
-### `intent create`
+### intent create
 
 Create a new user intent.
 
-```powershell
-node dist/src/index.js intent create --text "Build a verified demo artifact."
-```
+    node dist/src/index.js intent create --text "Build a verified demo artifact."
 
 All inputs:
 
-- `--text <text>`: required. The user request or operating objective.
-- `--constraint <constraint...>`: optional variadic list. Adds one or more constraints to the intent.
-- `--risk <risk>`: optional. One of `low`, `medium`, or `high`. Defaults to `medium`.
-- `--budget <budget>`: optional free-text budget description.
+- --text <text>: required. The user request or operating objective.
+- --constraint <constraint...>: optional variadic list. Adds one or more constraints to the intent.
+- --risk <risk>: optional. One of low, medium, or high. Defaults to medium.
+- --budget <budget>: optional free-text budget description.
 
 Examples:
 
-```powershell
-node dist/src/index.js intent create --text "Draft a launch plan" --risk medium
-node dist/src/index.js intent create --text "Analyze regulated workflow" --risk high --constraint "No external actions" "Cite all generated evidence"
-node dist/src/index.js intent create --text "Prototype local report" --budget "Keep model cost under $1"
-```
+    node dist/src/index.js intent create --text "Draft a launch plan" --risk medium
+    node dist/src/index.js intent create --text "Analyze regulated workflow" --risk high --constraint "No external actions" "Cite all generated evidence"
+    node dist/src/index.js intent create --text "Prototype local report" --budget "Keep model cost under $1"
 
 Reads:
 
-- `state/intent_queue.json`
+- state/intent_queue.json
 
 Writes:
 
-- Appends an intent to `state/intent_queue.json`.
+- Appends an intent to state/intent_queue.json.
 
 Returns:
 
-- The new intent ID, such as `I-001`.
+- The new intent ID, such as I-001.
 
 Use-cases:
 
@@ -260,73 +242,71 @@ Use-cases:
 
 Operator notes:
 
-- `--risk` is not validated by Commander before reaching the typed code path. Use only `low`, `medium`, or `high`.
-- A created intent starts with `status: "new"`.
+- --risk is not validated by Commander before reaching the typed code path. Use only low, medium, or high.
+- A created intent starts with status: "new".
 
-### `orchestrate`
+### orchestrate
 
 Ask the orchestrator model to convert an intent into a prompt contract, task board entries, deployment plan, and decision records.
 
-```powershell
-node dist/src/index.js orchestrate --intent I-001
-```
+    node dist/src/index.js orchestrate --intent I-001
 
 Inputs:
 
-- `--intent <intentId>`: required. Intent ID such as `I-001`.
+- --intent <intentId>: required. Intent ID such as I-001.
 
 Reads:
 
-- `state/intent_queue.json`
-- `state/agent_registry.json`
-- `state/model_config.json`
-- `state/task_board.json`
-- `state/deployment_plan.json`
-- `artifacts/artifact_index.json`
-- `state/learning_memory.json`
+- state/intent_queue.json
+- state/agent_registry.json
+- state/model_config.json
+- state/task_board.json
+- state/deployment_plan.json
+- artifacts/artifact_index.json
+- state/learning_memory.json
 
 Writes on success:
 
-- `state/prompt_contract.md`
-- `state/task_board.json`
-- `state/deployment_plan.json`
-- `state/intent_queue.json`
-- `state/decision_log.md`
-- `state/metrics.json`
+- state/prompt_contract.md
+- state/task_board.json
+- state/deployment_plan.json
+- state/intent_queue.json
+- state/decision_log.md
+- state/metrics.json
 
 Does not write:
 
-- `state/plan_checks.json`. Pre-flight validation happens in memory only.
+- state/plan_checks.json. Pre-flight validation happens in memory only.
 
 Model input includes:
 
 - Intent ID, text, risk, budget, constraints
 - Registered agents
-- Agent performance suffixes when `agent.performance.tasks_assigned > 0`
-- Active learning rules where `confidence * times_seen >= learning_rule_threshold`
+- Agent performance suffixes when agent.performance.tasks_assigned > 0
+- Active learning rules where confidence * times_seen >= learning_rule_threshold
 
 Pre-flight behavior:
 
 - The model response is parsed into a proposed plan in memory.
-- `collectPlanIssues` validates it before persistence.
+- collectPlanIssues validates it before persistence.
 - High-severity issues trigger model retries.
-- `orchestrator_max_retries` controls retries; default is `2`.
-- If retries are exhausted, orchestration throws and the intent stays `new`.
+- orchestrator_max_retries controls retries; default is 2.
+- If retries are exhausted, orchestration throws and the intent stays new.
 
 High-severity pre-flight examples:
 
-- `ASSIGNMENT_TASK_MISSING`
-- `ASSIGNMENT_AGENT_MISSING`
-- `EXECUTOR_REGISTRY_MISMATCH`
-- `DRY_RUN_DELIVERABLE`
-- `HIGH_RISK_REVIEW_MISSING`
-- `INSUFFICIENT_REVIEWERS`
-- `NO_DELIVERABLE_ARTIFACT`
-- `LOCAL_COMMAND_MISSING`
-- `LOCAL_COMMAND_NOT_ALLOWLISTED`
-- `REVIEW_DEPENDENCY_ARTIFACT_MISSING`
-- `LOW_REVIEW_PASS_RATE_FOR_RISK`
-- `HIGH_FAILURE_RATE_AGENT`
+- ASSIGNMENT_TASK_MISSING
+- ASSIGNMENT_AGENT_MISSING
+- EXECUTOR_REGISTRY_MISMATCH
+- DRY_RUN_DELIVERABLE
+- HIGH_RISK_REVIEW_MISSING
+- INSUFFICIENT_REVIEWERS
+- NO_DELIVERABLE_ARTIFACT
+- LOCAL_COMMAND_MISSING
+- LOCAL_COMMAND_NOT_ALLOWLISTED
+- REVIEW_DEPENDENCY_ARTIFACT_MISSING
+- LOW_REVIEW_PASS_RATE_FOR_RISK
+- HIGH_FAILURE_RATE_AGENT
 
 Use-cases:
 
@@ -336,53 +316,49 @@ Use-cases:
 
 Expected output:
 
-```text
-Created deployment DP-001 with tasks T-001, T-002.
-```
+    Created deployment DP-001 with tasks T-001, T-002.
 
 Failure examples:
 
-- Missing model key: set the environment variable named by `api_key_env`.
-- Truncated model response: increase `max_output_tokens` or reduce intent complexity.
+- Missing model key: set the environment variable named by api_key_env.
+- Truncated model response: increase max_output_tokens or reduce intent complexity.
 - Unknown agent selected by model: adjust registry or rerun orchestration.
 - Max retries exhausted: inspect the final violation codes in the thrown error.
 
-### `plan-check`
+### plan-check
 
 Persist a deployment plan check.
 
-```powershell
-node dist/src/index.js plan-check --deployment DP-001
-node dist/src/index.js plan-check --deployment DP-001 --json
-```
+    node dist/src/index.js plan-check --deployment DP-001
+    node dist/src/index.js plan-check --deployment DP-001 --json
 
 Inputs:
 
-- `--deployment <deploymentId>`: required.
-- `--json`: optional. Print the full `PlanCheck` JSON.
+- --deployment <deploymentId>: required.
+- --json: optional. Print the full PlanCheck JSON.
 
 Reads:
 
-- `state/deployment_plan.json`
-- `state/task_board.json`
-- `state/agent_registry.json`
-- `artifacts/artifact_index.json`
-- `state/model_config.json`
-- `state/plan_checks.json`
+- state/deployment_plan.json
+- state/task_board.json
+- state/agent_registry.json
+- artifacts/artifact_index.json
+- state/model_config.json
+- state/plan_checks.json
 
 Writes:
 
-- Upserts one check per deployment in `state/plan_checks.json`.
+- Upserts one check per deployment in state/plan_checks.json.
 
 Exit behavior:
 
-- Sets nonzero exit code if any issue has severity `high`.
+- Sets nonzero exit code if any issue has severity high.
 
 Use-cases:
 
 - Audit an already persisted deployment.
 - Produce durable plan-check records for retrospectives.
-- Populate learning memory after running `retrospective`.
+- Populate learning memory after running retrospective.
 - Diagnose why orchestration pre-flight might be rejecting a plan.
 
 Important issue categories:
@@ -398,40 +374,38 @@ Important issue categories:
 - Review/synthesis dependency artifact gaps
 - Performance-gated routing failures
 
-### `approval record`
+### approval record
 
 Approve or reject a deployment.
 
-```powershell
-node dist/src/index.js approval record --deployment DP-001 --approver "human" --scope "Run deployment DP-001."
-node dist/src/index.js approval record --deployment DP-001 --approver "human" --scope "Reject until dry-run routing is fixed." --decision rejected
-```
+    node dist/src/index.js approval record --deployment DP-001 --approver "human" --scope "Run deployment DP-001."
+    node dist/src/index.js approval record --deployment DP-001 --approver "human" --scope "Reject until dry-run routing is fixed." --decision rejected
 
 All inputs:
 
-- `--deployment <deploymentId>`: required.
-- `--approver <name>`: required.
-- `--scope <scope>`: required. The exact approved or rejected scope.
-- `--decision <decision>`: optional. `approved` or `rejected`. Defaults to `approved`.
+- --deployment <deploymentId>: required.
+- --approver <name>: required.
+- --scope <scope>: required. The exact approved or rejected scope.
+- --decision <decision>: optional. approved or rejected. Defaults to approved.
 
 Reads:
 
-- `state/approvals.json`
-- `state/deployment_plan.json`
+- state/approvals.json
+- state/deployment_plan.json
 
 Writes:
 
-- Appends to `state/approvals.json`.
-- Updates the deployment in `state/deployment_plan.json`.
+- Appends to state/approvals.json.
+- Updates the deployment in state/deployment_plan.json.
 
 Status effects:
 
-- `approved` sets deployment status to `approved` and fills `approved_at`.
-- `rejected` sets deployment status to `blocked` and clears `approved_at`.
+- approved sets deployment status to approved and fills approved_at.
+- rejected sets deployment status to blocked and clears approved_at.
 
 Returns:
 
-- Approval ID such as `AP-001`.
+- Approval ID such as AP-001.
 
 Use-cases:
 
@@ -439,59 +413,57 @@ Use-cases:
 - Record a human rejection with scope.
 - Preserve an approval audit trail.
 
-### `run`
+### run
 
 Run an approved deployment.
 
-```powershell
-node dist/src/index.js run --deployment DP-001
-node dist/src/index.js run --deployment DP-001 --execute
-node dist/src/index.js run --deployment DP-001 --rerun
-```
+    node dist/src/index.js run --deployment DP-001
+    node dist/src/index.js run --deployment DP-001 --execute
+    node dist/src/index.js run --deployment DP-001 --rerun
 
 All inputs:
 
-- `--deployment <deploymentId>`: required.
-- `--execute`: optional. Required for `local_command` assignments.
-- `--rerun`: optional. Allows explicit rerun of a completed or failed deployment.
+- --deployment <deploymentId>: required.
+- --execute: optional. Required for local_command assignments.
+- --rerun: optional. Allows explicit rerun of a completed or failed deployment.
 
 Reads:
 
-- `state/deployment_plan.json`
-- `state/task_board.json`
-- `state/agent_registry.json`
-- `state/approvals.json`
-- `state/model_config.json` for model tasks and reviewers
+- state/deployment_plan.json
+- state/task_board.json
+- state/agent_registry.json
+- state/approvals.json
+- state/model_config.json for model tasks and reviewers
 - Task input context files
 - Dependency artifact files
 
 Writes:
 
-- Updates deployment status in `state/deployment_plan.json`.
-- Updates task statuses in `state/task_board.json`.
-- Writes artifacts under `artifacts/runs/<task_id>/`.
-- Updates `artifacts/artifact_index.json`.
-- Updates `state/metrics.json`.
-- Updates `state/chat.json` for blockers or review defects.
-- Writes structured reviews to `state/review_log.json` for review-required deliverables.
-- Writes consensus to `state/consensus.json` after spawned reviews.
+- Updates deployment status in state/deployment_plan.json.
+- Updates task statuses in state/task_board.json.
+- Writes artifacts under artifacts/runs/<task_id>/.
+- Updates artifacts/artifact_index.json.
+- Updates state/metrics.json.
+- Updates state/chat.json for blockers or review defects.
+- Writes structured reviews to state/review_log.json for review-required deliverables.
+- Writes consensus to state/consensus.json after spawned reviews.
 
 Execution behavior by executor:
 
-- `dry_run`: writes `delegation_packet.md`, registers a `delegation_packet` artifact, increments dry-run metric.
-- `model_agent`: builds a scoped context packet, calls the configured model, writes `response_output.md`, registers `model_output`.
-- `local_command`: requires `--execute`, checks command allowlist, writes `command_output.txt`, `command_error.txt`, and `command_result.json`, registers `command_output` on exit code `0`.
+- dry_run: writes delegation_packet.md, registers a delegation_packet artifact, increments dry-run metric.
+- model_agent: builds a scoped context packet, calls the configured model, writes response_output.md, registers model_output.
+- local_command: requires --execute, checks command allowlist, writes command_output.txt, command_error.txt, and command_result.json, registers command_output on exit code 0.
 
 Approval behavior:
 
-- If a deployment requires approval, an approved record must exist before `run`.
-- If status is not `approved`, use `--rerun` only for intentional reruns.
+- If a deployment requires approval, an approved record must exist before run.
+- If status is not approved, use --rerun only for intentional reruns.
 
 Review behavior:
 
 - After a review-required deliverable task completes, MAW spawns structured reviewers sequentially.
-- Reviewer count is based on task risk: low `1`, medium `2`, high `3`.
-- Review artifacts are registered as `review_evidence` and `structured_review`.
+- Reviewer count is based on task risk: low 1, medium 2, high 3.
+- Review artifacts are registered as review_evidence and structured_review.
 - Malformed or truncated reviewer output becomes an abstention and does not throw.
 - Consensus is computed automatically after spawned reviewers finish.
 
@@ -505,46 +477,44 @@ Use-cases:
 
 - Execute an approved plan.
 - Dry-run a plan shape without external actions.
-- Execute allowlisted local commands only after explicit approval and `--execute`.
+- Execute allowlisted local commands only after explicit approval and --execute.
 - Rerun a deployment after fixing blockers or state.
 
 Common blockers:
 
-- `Deployment DP-001 requires explicit approval before execution.`
-- `Local command task T-001 requires --execute.`
-- `Command is not allowlisted for <agent_id>: <command>`
-- `Dependency not completed: T-001`
+- Deployment DP-001 requires explicit approval before execution.
+- Local command task T-001 requires --execute.
+- Command is not allowlisted for <agent_id>: <command>
+- Dependency not completed: T-001
 - Model quota or missing API key errors.
 
-### `context-check`
+### context-check
 
 Check whether a task has sufficient, readable context.
 
-```powershell
-node dist/src/index.js context-check --task T-007
-node dist/src/index.js context-check --task T-007 --json
-```
+    node dist/src/index.js context-check --task T-007
+    node dist/src/index.js context-check --task T-007 --json
 
 Inputs:
 
-- `--task <taskId>`: required.
-- `--json`: optional. Print the full `ContextCheck` JSON.
+- --task <taskId>: required.
+- --json: optional. Print the full ContextCheck JSON.
 
 Reads:
 
-- `state/task_board.json`
-- `artifacts/artifact_index.json`
-- `state/context_checks.json`
-- Files listed in `task.input_context`
+- state/task_board.json
+- artifacts/artifact_index.json
+- state/context_checks.json
+- Files listed in task.input_context
 - Dependency artifact files
 
 Writes:
 
-- Upserts one check per task in `state/context_checks.json`.
+- Upserts one check per task in state/context_checks.json.
 
 Exit behavior:
 
-- Sets nonzero exit code if any issue has severity `high`.
+- Sets nonzero exit code if any issue has severity high.
 
 Checks:
 
@@ -562,39 +532,37 @@ Use-cases:
 - Confirm a final review task can see its dependency artifacts.
 - Generate durable context-check issues for scoring and retrospectives.
 
-### `review record`
+### review record
 
 Record a manual review note.
 
-```powershell
-node dist/src/index.js review record --task T-001 --reviewer "human" --status fail --issue "Missing evidence for criterion 2"
-```
+    node dist/src/index.js review record --task T-001 --reviewer "human" --status fail --issue "Missing evidence for criterion 2"
 
 All inputs:
 
-- `--task <taskId>`: required.
-- `--reviewer <reviewer>`: required. Reviewer ID or name.
-- `--status <status>`: optional. `pass` or `fail`. Defaults to `pass`.
-- `--issue <issue...>`: optional variadic list of issue text.
+- --task <taskId>: required.
+- --reviewer <reviewer>: required. Reviewer ID or name.
+- --status <status>: optional. pass or fail. Defaults to pass.
+- --issue <issue...>: optional variadic list of issue text.
 
 Reads:
 
-- `state/review_log.json`
+- state/review_log.json
 
 Writes:
 
-- Appends a review to `state/review_log.json`.
+- Appends a review to state/review_log.json.
 
 Important behavior:
 
-- Manual CLI reviews are marked `malformed: true`.
-- Manual CLI reviews become `status: "abstain"`.
+- Manual CLI reviews are marked malformed: true.
+- Manual CLI reviews become status: "abstain".
 - Manual CLI reviews are not load-bearing for scoring.
-- Use automated structured reviews from `run` for evidence-backed verification.
+- Use automated structured reviews from run for evidence-backed verification.
 
 Returns:
 
-- Review ID such as `R-001`.
+- Review ID such as R-001.
 
 Use-cases:
 
@@ -602,29 +570,27 @@ Use-cases:
 - Preserve pre-v0.3 style review input as non-load-bearing data.
 - Add a manual issue trail before rerunning structured verification.
 
-### `consensus compute`
+### consensus compute
 
 Compute or recompute load-bearing consensus for one task.
 
-```powershell
-node dist/src/index.js consensus compute --task T-001
-node dist/src/index.js consensus compute --task T-001 --json
-```
+    node dist/src/index.js consensus compute --task T-001
+    node dist/src/index.js consensus compute --task T-001 --json
 
 Inputs:
 
-- `--task <taskId>`: required.
-- `--json`: optional. Print the full consensus record.
+- --task <taskId>: required.
+- --json: optional. Print the full consensus record.
 
 Reads:
 
-- `state/review_log.json`
-- `state/task_board.json`
-- `state/consensus.json`
+- state/review_log.json
+- state/task_board.json
+- state/consensus.json
 
 Writes:
 
-- Upserts the load-bearing consensus record for the task in `state/consensus.json`.
+- Upserts the load-bearing consensus record for the task in state/consensus.json.
 - Marks older consensus records for that task as non-load-bearing.
 
 Consensus logic:
@@ -648,31 +614,29 @@ Failure examples:
 - Review log schema is invalid.
 - Task ID does not exist and reviews have no criteria to infer.
 
-### `migrate`
+### migrate
 
 Convert legacy pre-v0.3 flat reviews to structured abstentions.
 
-```powershell
-node dist/src/index.js migrate
-```
+    node dist/src/index.js migrate
 
 Inputs: none.
 
 Reads:
 
-- `state/review_log.json`
-- `state/task_board.json`
-- `state/consensus.json`
+- state/review_log.json
+- state/task_board.json
+- state/consensus.json
 
 Writes:
 
-- Converts legacy review records in `state/review_log.json`.
+- Converts legacy review records in state/review_log.json.
 - Computes consensus for affected tasks.
 
 Idempotency:
 
-- Only records without `per_criterion` are migrated.
-- Re-running after migration reports `0` migrated records.
+- Only records without per_criterion are migrated.
+- Re-running after migration reports 0 migrated records.
 
 Use-cases:
 
@@ -682,61 +646,59 @@ Use-cases:
 
 Expected consequence:
 
-- Legacy DP-001 style data will score zero `verified_useful_outputs` after migration until real structured reviews exist.
+- Legacy DP-001 style data will score zero verified_useful_outputs after migration until real structured reviews exist.
 
-### `score`
+### score
 
 Compute Workflow Intelligence Yield for a deployment.
 
-```powershell
-node dist/src/index.js score --deployment DP-001
-node dist/src/index.js score --deployment DP-001 --json
-```
+    node dist/src/index.js score --deployment DP-001
+    node dist/src/index.js score --deployment DP-001 --json
 
 Inputs:
 
-- `--deployment <deploymentId>`: required.
-- `--json`: optional. Print full score JSON.
+- --deployment <deploymentId>: required.
+- --json: optional. Print full score JSON.
 
 Reads:
 
-- `state/deployment_plan.json`
-- `state/task_board.json`
-- `artifacts/artifact_index.json`
-- `state/consensus.json`
-- `state/metrics.json`
-- `state/approvals.json`
-- `state/context_checks.json`
-- `state/workflow_score.json`
+- state/deployment_plan.json
+- state/task_board.json
+- artifacts/artifact_index.json
+- state/consensus.json
+- state/metrics.json
+- state/approvals.json
+- state/context_checks.json
+- state/workflow_score.json
 
 Writes:
 
-- Upserts one score per deployment in `state/workflow_score.json`.
+- Upserts one score per deployment in state/workflow_score.json.
 
 Key fields:
 
-- `verified_useful_outputs`: review-required tasks with load-bearing pass consensus.
-- `consensus_pass_count`: load-bearing pass consensus records.
-- `consensus_split_count`: load-bearing split consensus records.
-- `consensus_insufficient_count`: load-bearing insufficient consensus records.
-- `review_pass_rate`: `verified_useful_outputs / review_required_tasks`, or `1` when no tasks required review.
-- `failed_tasks`: failed tasks in deployment context.
-- `rerun_count`: extra primary deliverable artifacts per assigned task.
-- `human_interventions`: approvals for the deployment.
-- `context_failures`: failed context checks for deployment tasks.
-- `workflow_intelligence_yield`: verified useful outputs divided by the cost/penalty denominator.
+- verified_useful_outputs: review-required tasks with load-bearing pass consensus.
+- consensus_pass_count: load-bearing pass consensus records.
+- consensus_split_count: load-bearing split consensus records.
+- consensus_insufficient_count: load-bearing insufficient consensus records.
+- review_pass_rate: verified_useful_outputs / review_required_tasks, or 1 when no tasks required review.
+- failed_tasks: failed tasks in deployment context.
+- rerun_count: extra primary deliverable artifacts per assigned task.
+- human_interventions: approvals for the deployment.
+- context_failures: failed context checks for deployment tasks.
+- workflow_intelligence_yield: verified useful outputs divided by the cost/penalty denominator.
 
 Rerun artifact types counted:
 
-- `model_output`
-- `command_output`
-- `delegation_packet`
+- model_output
+- command_output
+- delegation_packet
 
 Rerun artifact types excluded:
 
-- `review_evidence`
-- `structured_review`
-- `manual_output`
+- review_evidence
+- structured_review
+- manual_output
 - sidecar files not registered as artifacts
 
 Use-cases:
@@ -745,39 +707,37 @@ Use-cases:
 - Refresh score after recomputing consensus.
 - Produce machine-readable quality signals for downstream analysis.
 
-### `retrospective`
+### retrospective
 
 Generate a deterministic retrospective and update learning memory.
 
-```powershell
-node dist/src/index.js retrospective --deployment DP-001
-node dist/src/index.js retrospective --deployment DP-001 --json
-```
+    node dist/src/index.js retrospective --deployment DP-001
+    node dist/src/index.js retrospective --deployment DP-001 --json
 
 Inputs:
 
-- `--deployment <deploymentId>`: required.
-- `--json`: optional. Print the retrospective JSON record.
+- --deployment <deploymentId>: required.
+- --json: optional. Print the retrospective JSON record.
 
 Reads:
 
 - Deployment context
-- `state/workflow_score.json`
-- `state/plan_checks.json`
-- `state/context_checks.json`
-- `state/chat.json`
-- `state/learning_memory.json`
-- `state/retrospective_index.json`
-- Performance inputs used by `performance update`
+- state/workflow_score.json
+- state/plan_checks.json
+- state/context_checks.json
+- state/chat.json
+- state/learning_memory.json
+- state/retrospective_index.json
+- Performance inputs used by performance update
 
 Writes:
 
-- `state/retrospectives/<RET-ID>.md`
-- `state/retrospective_index.json`
-- `state/learning_memory.json`
-- `state/performance_ledger.json`
-- `state/agent_registry.json`
-- Possibly `state/workflow_score.json` if score was missing
+- state/retrospectives/<RET-ID>.md
+- state/retrospective_index.json
+- state/learning_memory.json
+- state/performance_ledger.json
+- state/agent_registry.json
+- Possibly state/workflow_score.json if score was missing
 
 Learning rule inputs:
 
@@ -786,11 +746,11 @@ Learning rule inputs:
 
 Learning rule examples:
 
-- `DRY_RUN_DELIVERABLE`: do not route deliverables to dry-run unless the output is only a delegation packet.
-- `INSUFFICIENT_REVIEWERS`: high-risk reviewable tasks require at least three distinct reviewer personas.
-- `UNTESTABLE_ACCEPTANCE_CRITERIA`: criteria must be observable and evidence-checkable.
-- `LOW_REVIEW_PASS_RATE_FOR_RISK`: do not route high-risk reviewable tasks to low pass-rate agents.
-- `HIGH_FAILURE_RATE_AGENT`: do not route non-low-risk tasks to high failure-rate agents.
+- DRY_RUN_DELIVERABLE: do not route deliverables to dry-run unless the output is only a delegation packet.
+- INSUFFICIENT_REVIEWERS: high-risk reviewable tasks require at least three distinct reviewer personas.
+- UNTESTABLE_ACCEPTANCE_CRITERIA: criteria must be observable and evidence-checkable.
+- LOW_REVIEW_PASS_RATE_FOR_RISK: do not route high-risk reviewable tasks to low pass-rate agents.
+- HIGH_FAILURE_RATE_AGENT: do not route non-low-risk tasks to high failure-rate agents.
 
 Use-cases:
 
@@ -802,101 +762,97 @@ Use-cases:
 Idempotency:
 
 - Retrospective is one record per deployment.
-- Learning rule `times_seen` is not incremented again for the same source.
+- Learning rule times_seen is not incremented again for the same source.
 - Performance ledger entries for the deployment are replaced before projection.
 
-### `performance update`
+### performance update
 
 Rebuild per-agent performance memory from a deployment.
 
-```powershell
-node dist/src/index.js performance update --deployment DP-001
-node dist/src/index.js performance update --deployment DP-001 --json
-```
+    node dist/src/index.js performance update --deployment DP-001
+    node dist/src/index.js performance update --deployment DP-001 --json
 
 Inputs:
 
-- `--deployment <deploymentId>`: required.
-- `--json`: optional. Print all agents after performance projection.
+- --deployment <deploymentId>: required.
+- --json: optional. Print all agents after performance projection.
 
 Reads:
 
 - Deployment context
-- `state/agent_registry.json`
-- `state/performance_ledger.json`
-- `state/consensus.json`
+- state/agent_registry.json
+- state/performance_ledger.json
+- state/consensus.json
 
 Writes:
 
-- `state/performance_ledger.json`
-- `state/agent_registry.json`
+- state/performance_ledger.json
+- state/agent_registry.json
 
 Performance counters:
 
-- `tasks_assigned`
-- `tasks_completed`
-- `tasks_failed`
-- `review_passes`
-- `review_failures`
-- `dry_run_deliverable_mismatches`
-- `average_score_contribution`
-- `known_failure_modes`
+- tasks_assigned
+- tasks_completed
+- tasks_failed
+- review_passes
+- review_failures
+- dry_run_deliverable_mismatches
+- average_score_contribution
+- known_failure_modes
 
 Consensus-backed review outcome rules:
 
-- Load-bearing consensus `pass` increments `review_passes`.
-- Load-bearing consensus `fail`, `split`, or `insufficient` increments `review_failures`.
+- Load-bearing consensus pass increments review_passes.
+- Load-bearing consensus fail, split, or insufficient increments review_failures.
 - No load-bearing consensus leaves both counters unchanged for that task.
 
 Use-cases:
 
 - Refresh routing memory after scoring/consensus changes.
 - Make B.2 performance-aware orchestration see recent results.
-- Repair stale or manually edited `agent.performance` values from ledger projection.
+- Repair stale or manually edited agent.performance values from ledger projection.
 
-### `validate`
+### validate
 
 Validate state consistency.
 
-```powershell
-node dist/src/index.js validate
-```
+    node dist/src/index.js validate
 
 Inputs: none.
 
 Reads:
 
-- `state/agent_registry.json`
-- `state/task_board.json`
-- `state/deployment_plan.json`
-- `state/approvals.json`
-- `artifacts/artifact_index.json`
-- `state/review_log.json`
-- `state/consensus.json`
+- state/agent_registry.json
+- state/task_board.json
+- state/deployment_plan.json
+- state/approvals.json
+- artifacts/artifact_index.json
+- state/review_log.json
+- state/consensus.json
 
 Writes:
 
-- May migrate legacy reviews through `migrateLegacyReviews` if legacy records are present and the task board schema is valid.
+- May migrate legacy reviews through migrateLegacyReviews if legacy records are present and the task board schema is valid.
 
 Exit behavior:
 
-- Prints `Workflow state is valid.` and exits successfully when no issues exist.
+- Prints Workflow state is valid. and exits successfully when no issues exist.
 - Prints issues and sets nonzero exit code when invalid.
 
 Common validation issue codes:
 
-- `SCHEMA_INVALID`
-- `TASK_OWNER_MISSING`
-- `TASK_DEPENDENCY_MISSING`
-- `TASK_APPROVAL_MISSING`
-- `TASK_REVIEW_MISSING`
-- `ARTIFACT_MISSING`
-- `DEPLOYMENT_TASK_MISSING`
-- `DEPLOYMENT_AGENT_MISSING`
+- SCHEMA_INVALID
+- TASK_OWNER_MISSING
+- TASK_DEPENDENCY_MISSING
+- TASK_APPROVAL_MISSING
+- TASK_REVIEW_MISSING
+- ARTIFACT_MISSING
+- DEPLOYMENT_TASK_MISSING
+- DEPLOYMENT_AGENT_MISSING
 
 Important note:
 
-- `TASK_REVIEW_MISSING` for legacy completed tasks after v0.3 is often expected. It means the task lacks passing load-bearing consensus, not that the schema is broken.
+- TASK_REVIEW_MISSING for legacy completed tasks after v0.3 is often expected. It means the task lacks passing load-bearing consensus, not that the schema is broken.
 
 Use-cases:
 
@@ -904,25 +860,23 @@ Use-cases:
 - Detect broken references after manual state edits.
 - Trigger one-time legacy review migration.
 
-### `report`
+### report
 
 Print a Markdown report of the current workflow state.
 
-```powershell
-node dist/src/index.js report
-```
+    node dist/src/index.js report
 
 Inputs: none.
 
 Reads:
 
-- `state/intent_queue.json`
-- `state/task_board.json`
-- `state/deployment_plan.json`
-- `state/approvals.json`
-- `state/review_log.json`
-- `state/metrics.json`
-- `state/decision_log.md`
+- state/intent_queue.json
+- state/task_board.json
+- state/deployment_plan.json
+- state/approvals.json
+- state/review_log.json
+- state/metrics.json
+- state/decision_log.md
 
 Writes: none.
 
@@ -942,170 +896,158 @@ Use-cases:
 - Paste a run summary into a PR description or handoff.
 - Check whether approvals and decisions were recorded.
 
-### `bootstrap`
+### bootstrap
 
 Generate a session-readiness packet that pairs the workspace's continuity frame (project, stack, active deployments and tasks, recent artifacts) with a counter-context frame (git/source-truth risks, runtime warnings, drift, parse failures) and a deterministic posture recommendation.
 
 Bootstrap is readiness support, not proof of complete understanding.
 
-```powershell
-node dist/src/index.js bootstrap
-node dist/src/index.js bootstrap --json
-node dist/src/index.js bootstrap --work-type ordinary
-node dist/src/index.js bootstrap --work-type stateful
-node dist/src/index.js bootstrap --work-type architecture
-node dist/src/index.js bootstrap --work-type risky
-node dist/src/index.js bootstrap --persist
-```
+    node dist/src/index.js bootstrap
+    node dist/src/index.js bootstrap --json
+    node dist/src/index.js bootstrap --work-type ordinary
+    node dist/src/index.js bootstrap --work-type stateful
+    node dist/src/index.js bootstrap --work-type architecture
+    node dist/src/index.js bootstrap --work-type risky
+    node dist/src/index.js bootstrap --persist
 
 Inputs:
 
-- `--json`: optional. Print the structured `BootstrapPacket` as JSON instead of Markdown.
-- `--work-type <type>`: optional. One of `ordinary`, `stateful`, `architecture`, `risky`. Defaults to `ordinary`. Higher-risk work types tighten posture escalation.
-- `--persist`: optional. Write `state/bootstrap/BS-NNN.{md,json}` and update `state/bootstrap/index.json`.
+- --json: optional. Print the structured BootstrapPacket as JSON instead of Markdown.
+- --work-type <type>: optional. One of ordinary, stateful, architecture, risky. Defaults to ordinary. Higher-risk work types tighten posture escalation.
+- --persist: optional. Write state/bootstrap/BS-NNN.{md,json} and update state/bootstrap/index.json.
 
 Reads (best-effort, never fails on missing files):
 
-- `package.json`, `tsconfig.json`
-- `state/deployment_plan.json`, `state/task_board.json`, `state/agent_registry.json`, `state/intent_queue.json`, `state/model_config.json`
-- `artifacts/artifact_index.json`
-- `.git/` (read-only `git rev-parse`, `rev-list`, `remote`, bounded `status --porcelain -unormal`, bounded `ls-files --others --exclude-standard --directory`, `rev-parse --abbrev-ref`)
-- `.gitignore`, `dist/`, `node_modules/` (presence only, not contents)
+- package.json, tsconfig.json
+- state/deployment_plan.json, state/task_board.json, state/agent_registry.json, state/intent_queue.json, state/model_config.json
+- artifacts/artifact_index.json
+- .git/ (read-only git rev-parse, rev-list, remote, bounded status --porcelain -unormal, bounded ls-files --others --exclude-standard --directory, rev-parse --abbrev-ref)
+- .gitignore, dist/, node_modules/ (presence only, not contents)
 
 Writes:
 
 - Default mode: nothing.
-- `--persist` only: `state/bootstrap/BS-NNN.md`, `state/bootstrap/BS-NNN.json`, `state/bootstrap/index.json`.
+- --persist only: state/bootstrap/BS-NNN.md, state/bootstrap/BS-NNN.json, state/bootstrap/index.json.
 
 Does not:
 
 - Call models or any network service.
-- Run `validateWorkspace()` (which can migrate legacy reviews).
-- Mutate any operational state file (`task_board`, `deployment_plan`, `approvals`, `review_log`, `consensus`, `workflow_score`, `learning_memory`, `performance_ledger`, `metrics`, `chat`, `intent_queue`, `prompt_contract.md`, `decision_log.md`, `artifact_index.json`).
-- Inspect `node_modules/` or `dist/` deeply; only their presence is reported.
+- Run validateWorkspace() (which can migrate legacy reviews).
+- Mutate any operational state file (task_board, deployment_plan, approvals, review_log, consensus, workflow_score, learning_memory, performance_ledger, metrics, chat, intent_queue, prompt_contract.md, decision_log.md, artifact_index.json).
+- Inspect node_modules/ or dist/ deeply; only their presence is reported.
 
 Posture levels and exit codes:
 
-- `normal` → exit `0`. No escalations triggered.
-- `wide_scan` → exit `0`. Source-of-truth gaps, capped total git status output, large/capped top-level untracked entries, hygiene gaps, active deployments/tasks, or doc/code drift detected — review more before acting.
-- `governed` → exit `1`. `wide_scan` triggers combined with `--work-type risky` or `architecture`. `required_extra_review` will list extra steps such as initializing git, adding `.gitignore`, or running `plan-check` before approval.
-- `ask_human` → exit `2`. Hard stop: core state file unparseable, running deployment overlaps with `stateful`/`risky`/`architecture` work, or risky work attempted without reliable source truth.
+- normal → exit 0. No escalations triggered.
+- wide_scan → exit 0. Source-of-truth gaps, capped total git status output, large/capped top-level untracked entries, hygiene gaps, active deployments/tasks, or doc/code drift detected — review more before acting.
+- governed → exit 1. wide_scan triggers combined with --work-type risky or architecture. required_extra_review will list extra steps such as initializing git, adding .gitignore, or running plan-check before approval.
+- ask_human → exit 2. Hard stop: core state file unparseable, running deployment overlaps with stateful/risky/architecture work, or risky work attempted without reliable source truth.
 
 Persistence behavior:
 
-- `--persist` always writes regardless of posture. Even when posture is `ask_human`, the persisted packet becomes the audit artifact for the stop condition.
+- --persist always writes regardless of posture. Even when posture is ask_human, the persisted packet becomes the audit artifact for the stop condition.
 - The exit code follows posture *after* successful write.
 
 Use-cases:
 
 - Quick read on workspace readiness before starting a session.
-- Capture an audit trail of what was true at session start (`--persist`).
-- Block automation in CI when posture is `governed` or `ask_human`.
+- Capture an audit trail of what was true at session start (--persist).
+- Block automation in CI when posture is governed or ask_human.
 
 Operator notes:
 
-- Posture decisions are deterministic and transparent: every escalation appears in `posture_reasons` with a one-line rationale.
-- Ordinary work in a workspace with a wide top-level untracked surface escalates to `wide_scan`.
-- `status_capped` means the bounded total `git status --porcelain -unormal` output was truncated; it is separate from `untracked_capped`, which only means the bounded untracked-entry probe was truncated.
-- Bootstrap intentionally surfaces what it has *not* inspected (see `not_inspected` in JSON / `### Not Inspected` in Markdown). Treat that list as a prompt to widen scope before acting.
+- Posture decisions are deterministic and transparent: every escalation appears in posture_reasons with a one-line rationale.
+- Ordinary work in a workspace with a wide top-level untracked surface escalates to wide_scan.
+- status_capped means the bounded total git status --porcelain -unormal output was truncated; it is separate from untracked_capped, which only means the bounded untracked-entry probe was truncated.
+- Bootstrap intentionally surfaces what it has *not* inspected (see not_inspected in JSON / ### Not Inspected in Markdown). Treat that list as a prompt to widen scope before acting.
 - The Markdown renderer puts Counter-Context **before** Continuity whenever posture is elevated, so warnings are not buried under the active-task summary.
 
 ## End-to-End Use-Cases
 
 ### Use-Case 1: Start A Fresh Workspace
 
-```powershell
-npm install
-npm run build
-node dist/src/index.js init
-node dist/src/index.js validate
-```
+    npm install
+    npm run build
+    node dist/src/index.js init
+    node dist/src/index.js validate
 
 Expected result:
 
 - Default files exist.
 - Fresh validation passes.
 
-If validation fails immediately, inspect any manually existing state files because `init` does not overwrite them.
+If validation fails immediately, inspect any manually existing state files because init does not overwrite them.
 
 ### Use-Case 2: Create, Plan, Approve, Run, Verify, And Learn
 
-```powershell
-node dist/src/index.js intent create --text "Build a verified demo artifact." --risk medium
-node dist/src/index.js orchestrate --intent I-001
-node dist/src/index.js plan-check --deployment DP-001
-node dist/src/index.js approval record --deployment DP-001 --approver "operator" --scope "Run DP-001 as proposed."
-node dist/src/index.js run --deployment DP-001
-node dist/src/index.js score --deployment DP-001
-node dist/src/index.js retrospective --deployment DP-001
-node dist/src/index.js validate
-```
+    node dist/src/index.js intent create --text "Build a verified demo artifact." --risk medium
+    node dist/src/index.js orchestrate --intent I-001
+    node dist/src/index.js plan-check --deployment DP-001
+    node dist/src/index.js approval record --deployment DP-001 --approver "operator" --scope "Run DP-001 as proposed."
+    node dist/src/index.js run --deployment DP-001
+    node dist/src/index.js score --deployment DP-001
+    node dist/src/index.js retrospective --deployment DP-001
+    node dist/src/index.js validate
 
 Use this for normal model-agent deployments.
 
 Operator decision points:
 
-- If `plan-check` fails, inspect high-severity issues before approval.
-- If `run` fails, inspect `state/chat.json`, task blockers, and run artifacts.
-- If `score` shows zero verified outputs, inspect `state/consensus.json`.
+- If plan-check fails, inspect high-severity issues before approval.
+- If run fails, inspect state/chat.json, task blockers, and run artifacts.
+- If score shows zero verified outputs, inspect state/consensus.json.
 
 ### Use-Case 3: Create A Low-Risk Dry-Run Packet
 
 Dry-run is valid only when the required output is a delegation or task packet. The orchestrator should encode that if the intent is explicit.
 
-```powershell
-node dist/src/index.js intent create --text "Create a delegation packet only for a future implementation." --risk low
-node dist/src/index.js orchestrate --intent I-001
-node dist/src/index.js plan-check --deployment DP-001
-node dist/src/index.js approval record --deployment DP-001 --approver "operator" --scope "Emit delegation packet only."
-node dist/src/index.js run --deployment DP-001
-```
+    node dist/src/index.js intent create --text "Create a delegation packet only for a future implementation." --risk low
+    node dist/src/index.js orchestrate --intent I-001
+    node dist/src/index.js plan-check --deployment DP-001
+    node dist/src/index.js approval record --deployment DP-001 --approver "operator" --scope "Emit delegation packet only."
+    node dist/src/index.js run --deployment DP-001
 
 Expected artifact:
 
-- `artifacts/runs/T-001/delegation_packet.md`
+- artifacts/runs/T-001/delegation_packet.md
 
-If `plan-check` reports `DRY_RUN_DELIVERABLE`, the task is asking for a real deliverable and must not be dry-run routed.
+If plan-check reports DRY_RUN_DELIVERABLE, the task is asking for a real deliverable and must not be dry-run routed.
 
 ### Use-Case 4: Run A Local Command Task
 
 Local command tasks are usually orchestrated or manually created in state. A local-command assignment must satisfy:
 
-- Task executor is `local_command`.
-- Assignment executor is `local_command`.
-- Task has `command: { command, args }`.
-- Agent executor type is `local_command`.
-- Agent `command_allowlist` includes the command.
+- Task executor is local_command.
+- Assignment executor is local_command.
+- Task has command: { command, args }.
+- Agent executor type is local_command.
+- Agent command_allowlist includes the command.
 - Deployment has approval.
-- `run` is called with `--execute`.
+- run is called with --execute.
 
 Run:
 
-```powershell
-node dist/src/index.js approval record --deployment DP-001 --approver "operator" --scope "Run approved allowlisted command."
-node dist/src/index.js run --deployment DP-001 --execute
-```
+    node dist/src/index.js approval record --deployment DP-001 --approver "operator" --scope "Run approved allowlisted command."
+    node dist/src/index.js run --deployment DP-001 --execute
 
 Expected artifacts:
 
-- `artifacts/runs/<task>/command_output.txt`
-- `artifacts/runs/<task>/command_error.txt`
-- `artifacts/runs/<task>/command_result.json`
+- artifacts/runs/<task>/command_output.txt
+- artifacts/runs/<task>/command_error.txt
+- artifacts/runs/<task>/command_result.json
 
 If command exits nonzero:
 
 - Task is marked failed.
-- Blocker is added to `state/chat.json`.
+- Blocker is added to state/chat.json.
 - Deployment is marked failed.
 
 ### Use-Case 5: Recover From A Failed Deployment
 
 1. Inspect failure:
 
-```powershell
-node dist/src/index.js report
-node dist/src/index.js context-check --task T-001
-```
+    node dist/src/index.js report
+    node dist/src/index.js context-check --task T-001
 
 2. Fix the upstream cause:
 
@@ -1113,24 +1055,20 @@ node dist/src/index.js context-check --task T-001
 - Missing context file: create or fix workspace-relative file.
 - Missing dependency artifact: rerun or repair dependency.
 - Local command failure: fix command or allowlist.
-- Model quota: fix `OPENAI_API_KEY` or billing.
+- Model quota: fix OPENAI_API_KEY or billing.
 
 3. Rerun intentionally:
 
-```powershell
-node dist/src/index.js run --deployment DP-001 --rerun
-node dist/src/index.js score --deployment DP-001
-```
+    node dist/src/index.js run --deployment DP-001 --rerun
+    node dist/src/index.js score --deployment DP-001
 
 Reruns are counted from primary deliverable artifacts.
 
 ### Use-Case 6: Recompute Consensus And Score After Review Changes
 
-```powershell
-node dist/src/index.js consensus compute --task T-001
-node dist/src/index.js score --deployment DP-001
-node dist/src/index.js performance update --deployment DP-001
-```
+    node dist/src/index.js consensus compute --task T-001
+    node dist/src/index.js score --deployment DP-001
+    node dist/src/index.js performance update --deployment DP-001
 
 Use this after:
 
@@ -1141,52 +1079,40 @@ Use this after:
 
 ### Use-Case 7: Migrate Legacy Reviews
 
-```powershell
-node dist/src/index.js migrate
-node dist/src/index.js score --deployment DP-001
-node dist/src/index.js performance update --deployment DP-001
-```
+    node dist/src/index.js migrate
+    node dist/src/index.js score --deployment DP-001
+    node dist/src/index.js performance update --deployment DP-001
 
 Expected result:
 
 - Legacy enum reviews become abstaining, malformed structured reviews.
 - Consensus is insufficient unless real structured reviews exist.
-- `verified_useful_outputs` may drop to zero.
+- verified_useful_outputs may drop to zero.
 - Performance review failures may rise because consensus is honest.
 
 ### Use-Case 8: Generate Learning Rules From Plan And Context Failures
 
-```powershell
-node dist/src/index.js plan-check --deployment DP-001
-node dist/src/index.js context-check --task T-001
-node dist/src/index.js retrospective --deployment DP-001
-```
+    node dist/src/index.js plan-check --deployment DP-001
+    node dist/src/index.js context-check --task T-001
+    node dist/src/index.js retrospective --deployment DP-001
 
 Then inspect:
 
-```powershell
-Get-Content state/learning_memory.json
-```
+    Get-Content state/learning_memory.json
 
 Rules above the threshold are injected into future orchestrator prompts.
 
 Default activation threshold:
 
-```text
-confidence * times_seen >= 1.6
-```
+    confidence * times_seen >= 1.6
 
 Default rule cap:
 
-```text
-10 most recently seen active rules
-```
+    10 most recently seen active rules
 
 ### Use-Case 9: Refresh Performance-Aware Routing Memory
 
-```powershell
-node dist/src/index.js performance update --deployment DP-001 --json
-```
+    node dist/src/index.js performance update --deployment DP-001 --json
 
 Run this after:
 
@@ -1195,32 +1121,28 @@ Run this after:
 - Retrospective.
 - Manual repair of ledger or registry.
 
-The orchestrator sees performance suffixes on future `orchestrate` calls.
+The orchestrator sees performance suffixes on future orchestrate calls.
 
 ### Use-Case 10: Check Why A High-Risk Plan Is Rejected
 
 Run a persisted check:
 
-```powershell
-node dist/src/index.js plan-check --deployment DP-001 --json
-```
+    node dist/src/index.js plan-check --deployment DP-001 --json
 
 Look for:
 
-- `INSUFFICIENT_REVIEWERS`: fewer than three distinct reviewer personas.
-- `LOW_REVIEW_PASS_RATE_FOR_RISK`: high-risk task routed to an agent below review pass floor.
-- `HIGH_FAILURE_RATE_AGENT`: medium/high risk task routed to an agent above failure ceiling.
-- `HIGH_RISK_REVIEW_MISSING`: high-risk task does not require review.
+- INSUFFICIENT_REVIEWERS: fewer than three distinct reviewer personas.
+- LOW_REVIEW_PASS_RATE_FOR_RISK: high-risk task routed to an agent below review pass floor.
+- HIGH_FAILURE_RATE_AGENT: medium/high risk task routed to an agent above failure ceiling.
+- HIGH_RISK_REVIEW_MISSING: high-risk task does not require review.
 
 Fix route, registry, risk level, or criteria, then orchestrate again.
 
 ### Use-Case 11: Produce An Operator Handoff
 
-```powershell
-node dist/src/index.js report > handoff.md
-node dist/src/index.js score --deployment DP-001 --json > score.json
-node dist/src/index.js plan-check --deployment DP-001 --json > plan-check.json
-```
+    node dist/src/index.js report > handoff.md
+    node dist/src/index.js score --deployment DP-001 --json > score.json
+    node dist/src/index.js plan-check --deployment DP-001 --json > plan-check.json
 
 Include:
 
@@ -1237,117 +1159,107 @@ The current repository state has legacy DP-001 data migrated to honest verificat
 
 Useful commands:
 
-```powershell
-node dist/src/index.js validate
-node dist/src/index.js score --deployment DP-001 --json
-node dist/src/index.js performance update --deployment DP-001 --json
-```
+    node dist/src/index.js validate
+    node dist/src/index.js score --deployment DP-001 --json
+    node dist/src/index.js performance update --deployment DP-001 --json
 
 Expected current pattern:
 
-- `verified_useful_outputs` is `0`.
-- `workflow_intelligence_yield` is `0`.
-- `rerun_count` is `14`.
-- Validation reports `TASK_REVIEW_MISSING` for legacy completed reviewed tasks.
-- Consensus for those tasks is `insufficient`, not pass.
+- verified_useful_outputs is 0.
+- workflow_intelligence_yield is 0.
+- rerun_count is 14.
+- Validation reports TASK_REVIEW_MISSING for legacy completed reviewed tasks.
+- Consensus for those tasks is insufficient, not pass.
 
 This is not a regression. It is the intended post-v0.3 honest-verification result.
 
 ## Configuration Reference
 
-### `state/model_config.json`
+### state/model_config.json
 
 Shape:
 
-```json
-{
-  "provider": "openai",
-  "base_url": "https://api.openai.com/v1",
-  "api_key_env": "OPENAI_API_KEY",
-  "default_models": {
-    "orchestrator": "gpt-5.2",
-    "high": "gpt-5.2",
-    "mid": "gpt-5-mini",
-    "low": "gpt-5-nano"
-  },
-  "max_output_tokens": 4000,
-  "learning_rule_threshold": 1.6,
-  "orchestrator_max_retries": 2,
-  "learning_rule_cap": 10,
-  "performance_min_assignments": 3,
-  "performance_review_pass_floor": 0.5,
-  "performance_failure_rate_ceiling": 0.5,
-  "pricing": {}
-}
-```
+    {
+      "provider": "openai",
+      "base_url": "https://api.openai.com/v1",
+      "api_key_env": "OPENAI_API_KEY",
+      "default_models": {
+        "orchestrator": "gpt-5.2",
+        "high": "gpt-5.2",
+        "mid": "gpt-5-mini",
+        "low": "gpt-5-nano"
+      },
+      "max_output_tokens": 4000,
+      "learning_rule_threshold": 1.6,
+      "orchestrator_max_retries": 2,
+      "learning_rule_cap": 10,
+      "performance_min_assignments": 3,
+      "performance_review_pass_floor": 0.5,
+      "performance_failure_rate_ceiling": 0.5,
+      "pricing": {}
+    }
 
 Defaulted fields may be omitted in older workspaces and are filled by schema parsing:
 
-- `max_output_tokens`
-- `learning_rule_threshold`
-- `orchestrator_max_retries`
-- `learning_rule_cap`
-- `performance_min_assignments`
-- `performance_review_pass_floor`
-- `performance_failure_rate_ceiling`
-- `pricing`
+- max_output_tokens
+- learning_rule_threshold
+- orchestrator_max_retries
+- learning_rule_cap
+- performance_min_assignments
+- performance_review_pass_floor
+- performance_failure_rate_ceiling
+- pricing
 
 Pricing shape:
 
-```json
-{
-  "pricing": {
-    "model-name": {
-      "input_per_1m_usd": 1,
-      "output_per_1m_usd": 2
+    {
+      "pricing": {
+        "model-name": {
+          "input_per_1m_usd": 1,
+          "output_per_1m_usd": 2
+        }
+      }
     }
-  }
-}
-```
 
 Pricing affects estimated cost only. It does not change model selection.
 
-### `state/agent_registry.json`
+### state/agent_registry.json
 
 Core agent shape:
 
-```json
-{
-  "agent_id": "researcher_1",
-  "role": "Research Agent",
-  "executor_type": "model_agent",
-  "model_tier": "mid",
-  "allowed_tools": [],
-  "command_allowlist": [],
-  "permissions": {
-    "external_actions": false,
-    "destructive_actions": false,
-    "credential_access": false,
-    "paid_actions": false,
-    "public_actions": false
-  },
-  "max_cost_usd": 1
-}
-```
+    {
+      "agent_id": "researcher_1",
+      "role": "Research Agent",
+      "executor_type": "model_agent",
+      "model_tier": "mid",
+      "allowed_tools": [],
+      "command_allowlist": [],
+      "permissions": {
+        "external_actions": false,
+        "destructive_actions": false,
+        "credential_access": false,
+        "paid_actions": false,
+        "public_actions": false
+      },
+      "max_cost_usd": 1
+    }
 
 Reviewer agents require:
 
-```json
-{
-  "role": "Reviewer Agent",
-  "reviewer_persona": "skeptical"
-}
-```
+    {
+      "role": "Reviewer Agent",
+      "reviewer_persona": "skeptical"
+    }
 
 Allowed reviewer personas:
 
-- `default`
-- `skeptical`
-- `completeness`
-- `rigor`
-- `adversarial`
+- default
+- skeptical
+- completeness
+- rigor
+- adversarial
 
-Performance is maintained by `performance update`; avoid hand-editing it unless repairing state.
+Performance is maintained by performance update; avoid hand-editing it unless repairing state.
 
 ## State Editing Guidance
 
@@ -1359,22 +1271,20 @@ When manual edits are necessary:
 - Keep IDs stable.
 - Keep paths workspace-relative.
 - Preserve schema enum values exactly.
-- Run `node dist/src/index.js validate` after edits.
+- Run node dist/src/index.js validate after edits.
 - Recompute derived state after edits:
 
-```powershell
-node dist/src/index.js consensus compute --task T-001
-node dist/src/index.js score --deployment DP-001
-node dist/src/index.js performance update --deployment DP-001
-```
+    node dist/src/index.js consensus compute --task T-001
+    node dist/src/index.js score --deployment DP-001
+    node dist/src/index.js performance update --deployment DP-001
 
 Derived files include:
 
-- `state/consensus.json`
-- `state/workflow_score.json`
-- `state/performance_ledger.json`
-- `state/agent_registry.json` performance blocks
-- `state/learning_memory.json`
+- state/consensus.json
+- state/workflow_score.json
+- state/performance_ledger.json
+- state/agent_registry.json performance blocks
+- state/learning_memory.json
 
 ## Troubleshooting
 
@@ -1382,97 +1292,83 @@ Derived files include:
 
 Symptom:
 
-```text
-Missing OpenAI API key environment variable: OPENAI_API_KEY
-```
+    Missing OpenAI API key environment variable: OPENAI_API_KEY
 
 Fix:
 
-```powershell
-$env:OPENAI_API_KEY = "sk-..."
-```
+    $env:OPENAI_API_KEY = "sk-..."
 
-Or update `state/model_config.json` `api_key_env` to the environment variable you want to use.
+Or update state/model_config.json api_key_env to the environment variable you want to use.
 
 ### Model Quota Or API Error
 
 Symptom:
 
-```text
-OpenAI Responses API request failed (429): ...
-```
+    OpenAI Responses API request failed (429): ...
 
 Fix:
 
 - Check account quota and billing.
 - Rerun the deployment after resolving quota.
-- Failed task blockers are stored in `state/chat.json`.
+- Failed task blockers are stored in state/chat.json.
 
 ### Orchestrator Cannot Produce A Valid Plan
 
 Symptom:
 
-```text
-Orchestrator could not produce a valid plan after 2 retries. Final violations: ...
-```
+    Orchestrator could not produce a valid plan after 2 retries. Final violations: ...
 
 Fix:
 
 - Inspect violation codes.
-- Run `plan-check` if a plan was persisted from an earlier attempt.
+- Run plan-check if a plan was persisted from an earlier attempt.
 - Repair registry, risk level, reviewer pool, or intent constraints.
-- Re-run `orchestrate`.
+- Re-run orchestrate.
 
 ### Dry-Run Deliverable Rejected
 
 Symptom:
 
-```text
-DRY_RUN_DELIVERABLE
-```
+    DRY_RUN_DELIVERABLE
 
 Meaning:
 
-- The task output is a real deliverable, but assignment executor is `dry_run`.
+- The task output is a real deliverable, but assignment executor is dry_run.
 
 Fix:
 
-- Route to `model_agent` or `local_command`.
-- Use `dry_run` only when output is a delegation packet or task packet.
+- Route to model_agent or local_command.
+- Use dry_run only when output is a delegation packet or task packet.
 
 ### High-Risk Task Rejected For Reviewer Pool
 
 Symptom:
 
-```text
-INSUFFICIENT_REVIEWERS
-```
+    INSUFFICIENT_REVIEWERS
 
 Meaning:
 
-- Fewer than three distinct reviewer personas exist in `state/agent_registry.json`.
+- Fewer than three distinct reviewer personas exist in state/agent_registry.json.
 
 Fix:
 
-- Register or restore reviewer agents with distinct `reviewer_persona` values.
-- Default fresh workspace has `skeptical`, `completeness`, and `rigor`.
+- Register or restore reviewer agents with distinct reviewer_persona values.
+- Default fresh workspace has skeptical, completeness, and rigor.
 
 ### Local Command Refuses To Run
 
 Symptoms:
 
-```text
-Local command task T-001 requires --execute.
-Command is not allowlisted for shell_1: node
-```
+    Local command task T-001 requires --execute.
+    Command is not allowlisted for shell_1: node
 
 Fix:
 
-- Use `--execute`.
-- Ensure the assigned local-command agent's `command_allowlist` includes the command.
+- Use --execute.
+- Ensure the assigned local-command agent's command_allowlist includes the command.
 - Confirm deployment approval exists.
 
-### Validation Fails With `TASK_REVIEW_MISSING`
+### Validation Fails With TASK_REVIEW_MISSING
 
 Meaning:
 
@@ -1481,7 +1377,7 @@ Meaning:
 Fix options:
 
 - If this is legacy migrated data, accept it as honest historical state.
-- If this is a current run, inspect `state/review_log.json` and `state/consensus.json`.
+- If this is a current run, inspect state/review_log.json and state/consensus.json.
 - Rerun the deliverable or reviewers, then recompute consensus and score.
 
 ### Consensus Is Insufficient
@@ -1492,9 +1388,9 @@ Meaning:
 
 Fix:
 
-- Inspect reviewer artifacts under `artifacts/runs/<task_id>/`.
+- Inspect reviewer artifacts under artifacts/runs/<task_id>/.
 - Look for malformed or truncated reviewer output.
-- Rerun the task or insert valid structured reviews, then run `consensus compute`.
+- Rerun the task or insert valid structured reviews, then run consensus compute.
 
 ### Score Is Zero
 
@@ -1504,7 +1400,7 @@ Meaning:
 
 Fix:
 
-- Inspect `state/consensus.json`.
+- Inspect state/consensus.json.
 - Ensure reviewer pass verdicts include citations.
 - Ensure citations overlap across reviewers for multi-reviewer tasks.
 - Recompute consensus and score.
@@ -1513,11 +1409,9 @@ Fix:
 
 ### Before Approval
 
-```powershell
-node dist/src/index.js plan-check --deployment DP-001
-node dist/src/index.js context-check --task T-001
-node dist/src/index.js report
-```
+    node dist/src/index.js plan-check --deployment DP-001
+    node dist/src/index.js context-check --task T-001
+    node dist/src/index.js report
 
 Approve only when:
 
@@ -1529,12 +1423,10 @@ Approve only when:
 
 ### After Run
 
-```powershell
-node dist/src/index.js score --deployment DP-001
-node dist/src/index.js retrospective --deployment DP-001
-node dist/src/index.js performance update --deployment DP-001
-node dist/src/index.js validate
-```
+    node dist/src/index.js score --deployment DP-001
+    node dist/src/index.js retrospective --deployment DP-001
+    node dist/src/index.js performance update --deployment DP-001
+    node dist/src/index.js validate
 
 Accept the run only when:
 
@@ -1545,43 +1437,41 @@ Accept the run only when:
 
 ### Before Handoff
 
-```powershell
-node dist/src/index.js report
-node dist/src/index.js score --deployment DP-001 --json
-node dist/src/index.js plan-check --deployment DP-001 --json
-node dist/src/index.js validate
-```
+    node dist/src/index.js report
+    node dist/src/index.js score --deployment DP-001 --json
+    node dist/src/index.js plan-check --deployment DP-001 --json
+    node dist/src/index.js validate
 
-Document any expected validation failures, especially legacy `TASK_REVIEW_MISSING` records.
+Document any expected validation failures, especially legacy TASK_REVIEW_MISSING records.
 
 ## Command Summary Table
 
 | Command | Required inputs | Optional inputs | Primary writes | Model call |
 | --- | --- | --- | --- | --- |
-| `init` | none | none | default workspace files | no |
-| `intent create` | `--text` | `--constraint`, `--risk`, `--budget` | `state/intent_queue.json` | no |
-| `orchestrate` | `--intent` | none | prompt contract, tasks, deployment, decisions, metrics | yes |
-| `approval record` | `--deployment`, `--approver`, `--scope` | `--decision` | approvals, deployment status | no |
-| `review record` | `--task`, `--reviewer` | `--status`, `--issue` | review log | no |
-| `consensus compute` | `--task` | `--json` | consensus | no |
-| `migrate` | none | none | review log, consensus | no |
-| `run` | `--deployment` | `--execute`, `--rerun` | task/deployment state, artifacts, metrics, reviews, consensus | depends on tasks |
-| `validate` | none | none | may migrate legacy reviews | no |
-| `score` | `--deployment` | `--json` | workflow score | no |
-| `plan-check` | `--deployment` | `--json` | plan checks | no |
-| `context-check` | `--task` | `--json` | context checks | no |
-| `retrospective` | `--deployment` | `--json` | retrospective, learning memory, performance | no |
-| `performance update` | `--deployment` | `--json` | performance ledger, agent registry | no |
-| `report` | none | none | none | no |
-| `bootstrap` | none | `--json`, `--work-type`, `--persist` | nothing by default; `state/bootstrap/BS-NNN.{md,json}` only with `--persist` | no |
+| init | none | none | default workspace files | no |
+| intent create | --text | --constraint, --risk, --budget | state/intent_queue.json | no |
+| orchestrate | --intent | none | prompt contract, tasks, deployment, decisions, metrics | yes |
+| approval record | --deployment, --approver, --scope | --decision | approvals, deployment status | no |
+| review record | --task, --reviewer | --status, --issue | review log | no |
+| consensus compute | --task | --json | consensus | no |
+| migrate | none | none | review log, consensus | no |
+| run | --deployment | --execute, --rerun | task/deployment state, artifacts, metrics, reviews, consensus | depends on tasks |
+| validate | none | none | may migrate legacy reviews | no |
+| score | --deployment | --json | workflow score | no |
+| plan-check | --deployment | --json | plan checks | no |
+| context-check | --task | --json | context checks | no |
+| retrospective | --deployment | --json | retrospective, learning memory, performance | no |
+| performance update | --deployment | --json | performance ledger, agent registry | no |
+| report | none | none | none | no |
+| bootstrap | none | --json, --work-type, --persist | nothing by default; state/bootstrap/BS-NNN.{md,json} only with --persist | no |
 
 ## Completion Standard For A Run
 
 A deployment is operationally complete when:
 
-1. The deployment has run to `completed`, or any failure is intentionally documented.
+1. The deployment has run to completed, or any failure is intentionally documented.
 2. Every review-required deliverable has load-bearing consensus.
-3. `score` has been recomputed.
-4. `retrospective` has been run.
-5. `performance update` has refreshed routing memory.
-6. `validate` has been run, and remaining issues are either fixed or explicitly accepted as historical/expected.
+3. score has been recomputed.
+4. retrospective has been run.
+5. performance update has refreshed routing memory.
+6. validate has been run, and remaining issues are either fixed or explicitly accepted as historical/expected.

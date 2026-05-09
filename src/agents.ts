@@ -17,6 +17,6 @@ export async function registerAgent(root: string, agent: Agent): Promise<Agent> 
 export async function getAgent(root: string, agentId: string): Promise<Agent> {
   const registry = AgentRegistrySchema.parse(await loadJson(root, "state/agent_registry.json"));
   const agent = registry.agents.find((entry) => entry.agent_id === agentId);
-  if (!agent) throw new Error(`Agent not found: ${agentId}`);
+  if (!agent) throw new Error("Agent not found: " + (agentId));
   return agent;
 }
