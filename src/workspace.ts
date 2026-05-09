@@ -60,6 +60,8 @@ export async function initWorkspace(root: string): Promise<void> {
   await saveJsonIfMissing(root, "state/retrospective_index.json", { retrospectives: [] });
   await saveJsonIfMissing(root, "state/performance_ledger.json", { entries: [] });
   await saveJsonIfMissing(root, "state/operator_experience.json", defaultOperatorExperience(nowIso()));
+  await saveJsonIfMissing(root, "state/permission_audit.json", { events: [] });
+  await saveJsonIfMissing(root, "state/transactions.json", { transactions: [] });
   await saveJsonIfMissing(root, "artifacts/artifact_index.json", { artifacts: [] });
 
   await writeIfMissing(

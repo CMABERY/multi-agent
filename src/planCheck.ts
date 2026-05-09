@@ -11,6 +11,7 @@ import {
   type IntelligenceIssue,
   type ModelConfig,
   type PlanCheck,
+  type PlanCheckStore,
   type Task
 } from "./schemas.js";
 import {
@@ -21,6 +22,11 @@ import {
   taskArtifacts
 } from "./intelligenceCommon.js";
 import { loadModelConfig } from "./openai.js";
+import {
+  classifyCommandAuthorization,
+  classifyToolAuthorization,
+  evaluateAuthorization
+} from "./permissionPolicy.js";
 import { loadJsonOrDefault, nowIso, saveJson } from "./storage.js";
 
 const deliverableArtifactTypes = new Set(["model_output", "command_output"]);
@@ -70,6 +76,31 @@ export async function runPlanCheck(
   if (existingIndex >= 0) store.plan_checks[existingIndex] = check;
   else store.plan_checks.push(check);
   await saveJson(root, "state/plan_checks.json", store);
+  return check;
+}
+
+export async function requireCurrentPassingPlanCheck(
+  root: string,
+  plan: DeploymentPlan,
+  gate: "approval" | "execution"
+): Promise<PlanCheck> {
+  const store = PlanCheckStoreSchema.parse(
+    await loadJsonOrDefault(root, "state/plan_checks.json", { plan_checks: [] })
+  );
+  const check = latestPlanCheck(store, plan.deployment_id);
+  const message =
+    "Deployment " +
+    (plan.deployment_id) +
+    " requires a current passing plan-check before " +
+    (gate) +
+    ". Run maw plan-check --deployment " +
+    (plan.deployment_id) +
+    ".";
+  if (!check || check.status !== "pass") throw new Error(message);
+  const freshnessFloor = gate === "approval" ? plan.updated_at : plan.created_at;
+  if (timestampValue(planCheckTimestamp(check)) < timestampValue(freshnessFloor)) {
+    throw new Error(message);
+  }
   return check;
 }
 
@@ -142,6 +173,7 @@ export function collectPlanIssues(input: {
     }
     if (agent) {
       addPerformanceRoutingIssues(issues, task, agent, config);
+      addPermissionPolicyIssues(issues, assignment, task, agent);
     }
     if (task.risk_level === "high" && !task.review_required) {
       issues.push(
@@ -260,6 +292,104 @@ function lacksAvailableOrPlannedArtifactSource(
   return !["model_agent", "local_command", "dry_run"].includes(assignment.executor);
 }
 
+function addPermissionPolicyIssues(
+  issues: IntelligenceIssue[],
+  assignment: DeploymentAssignment,
+  task: Task,
+  agent: Agent
+): void {
+  addToolPolicyIssues(issues, assignment, task, agent);
+  addCommandPolicyIssues(issues, assignment, task, agent);
+}
+
+function addToolPolicyIssues(
+  issues: IntelligenceIssue[],
+  assignment: DeploymentAssignment,
+  task: Task,
+  agent: Agent
+): void {
+  if (assignment.executor !== "model_agent") return;
+  if (!agent.allowed_tools.includes("web_search")) return;
+  const request = classifyToolAuthorization({
+    toolType: "web_search",
+    agent,
+    task,
+    signals: {
+      dependencyArtifactCount: task.dependencies.length,
+      workspaceContextPathCount: task.input_context.length
+    }
+  });
+  if (!request) return;
+  const decision = evaluateAuthorization(request);
+  if (decision.decision !== "deny") return;
+  for (const grant of decision.missing_grants) {
+    const code =
+      grant === "PublicSearch"
+        ? "WEB_SEARCH_PUBLIC_SEARCH_MISSING"
+        : "WEB_SEARCH_PRIVATE_EGRESS_MISSING";
+    const fix =
+      grant === "PublicSearch"
+        ? "Grant PublicSearch to " +
+          agent.agent_id +
+          " (or remove web_search from its allowed_tools) before approving this deployment."
+        : "Grant PrivateQueryEgress to " +
+          agent.agent_id +
+          ", or remove workspace-derived dependency/context inputs from the task, before approving this deployment.";
+    issues.push(
+      makeIssue(issues, {
+        severity: "high",
+        code,
+        target: task.task_id + "/" + agent.agent_id,
+        message:
+          "Plan authorizes hosted web_search for " +
+          task.task_id +
+          "/" +
+          agent.agent_id +
+          " but the agent is missing the " +
+          grant +
+          " grant required by the permission policy.",
+        recommended_fix: fix
+      })
+    );
+  }
+}
+
+function addCommandPolicyIssues(
+  issues: IntelligenceIssue[],
+  assignment: DeploymentAssignment,
+  task: Task,
+  agent: Agent
+): void {
+  if (assignment.executor !== "local_command") return;
+  if (!task.command) return;
+  const request = classifyCommandAuthorization({
+    commandSpec: task.command,
+    agent,
+    task
+  });
+  const decision = evaluateAuthorization(request);
+  if (decision.decision !== "deny") return;
+  issues.push(
+    makeIssue(issues, {
+      severity: "high",
+      code: "LOCAL_COMMAND_EXECUTE_GRANT_MISSING",
+      target: task.task_id + "/" + agent.agent_id,
+      message:
+        "Plan authorizes local_command " +
+        task.command.command +
+        " for " +
+        task.task_id +
+        "/" +
+        agent.agent_id +
+        " but the agent is missing the LocalCommandExecute grant required by the permission policy.",
+      recommended_fix:
+        "Grant LocalCommandExecute to " +
+        agent.agent_id +
+        " (or route the task to a non-command executor) before approving this deployment."
+    })
+  );
+}
+
 function addPerformanceRoutingIssues(
   issues: IntelligenceIssue[],
   task: Task,
@@ -324,4 +454,19 @@ function hasUntestableAcceptanceCriteria(task: Task): boolean {
 function hasDeliverableArtifactSource(task: Task, artifacts: Artifact[]): boolean {
   if (task.executor === "model_agent" || task.executor === "local_command") return true;
   return taskArtifacts(task, artifacts).some((artifact) => deliverableArtifactTypes.has(artifact.type));
+}
+
+function latestPlanCheck(store: PlanCheckStore, deploymentId: string): PlanCheck | undefined {
+  return store.plan_checks
+    .filter((check) => check.deployment_id === deploymentId)
+    .sort((a, b) => timestampValue(planCheckTimestamp(b)) - timestampValue(planCheckTimestamp(a)))[0];
+}
+
+function planCheckTimestamp(check: PlanCheck): string {
+  return check.updated_at ?? check.created_at;
+}
+
+function timestampValue(value: string): number {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }

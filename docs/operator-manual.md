@@ -173,6 +173,8 @@ MAW uses stable local IDs:
 - Learning rules: LR-001, LR-002
 - Retrospectives: RET-001, RET-002
 - Artifacts: ART-001, ART-002
+- Permission audit events: PA-001, PA-002
+- Transactions: TX-001, TX-002
 
 ### Executors
 
@@ -197,6 +199,33 @@ Risk affects reviewer fanout for review-required deliverables:
 verified_useful_outputs is consensus-backed. It counts review-required tasks only when the load-bearing consensus record for the task has overall_verdict: "pass".
 
 Raw manual review enum statuses are not load-bearing. review record intentionally stores malformed abstaining reviews because the CLI cannot collect the full structured evidence shape.
+
+### Permission Policy and Transactions
+
+Side-effecting actions go through a four-stage chain:
+
+1. plan-check emits a high-severity issue when an assignment authorizes an action whose required permission grant is missing on the assigned agent. plan-check fail blocks both approval and execution.
+2. Runtime evaluates the same classifier and writes a record to state/permission_audit.json before performing the action.
+3. For local_command, runtime also opens a transaction record in state/transactions.json before spawn. The transaction links the audit event id.
+4. Task and chat outcomes (failed, blocker) reflect the transaction's terminal state.
+
+Permission grants live in agent_registry.json under permissions.policy_grants. Currently defined:
+
+- PublicSearch: hosted web_search may be authorized for the agent.
+- PrivateQueryEgress: hosted web_search may be authorized when the request would carry workspace-derived dependency or context content.
+- LocalCommandExecute: agent may execute its allowlisted local commands.
+- CommitChange and ExternalShare are reserved taxonomy stubs for future action types and have no runtime effect yet.
+
+Legacy compatibility: an agent with permissions.external_actions = true is treated as if it holds PublicSearch.
+
+Transaction states (state/transactions.json):
+
+- Planned: action authorized and about to run.
+- Committed: action completed successfully.
+- Failed: action ran but did not succeed (for local_command, command exit code != 0 or post-spawn error).
+- Aborted: action was denied by policy at runtime; no side effect occurred.
+
+A Failed or Aborted transaction is reachable through maw status (counts and recent non-Committed) and maw doctor (findings for the active or most-recent deployment).
 
 ### Performance-Aware Routing
 
@@ -230,6 +259,8 @@ State files:
 - state/retrospective_index.json
 - state/performance_ledger.json
 - state/operator_experience.json
+- state/permission_audit.json
+- state/transactions.json
 - state/prompt_contract.md
 - state/decision_log.md
 
@@ -402,6 +433,7 @@ Output includes:
 - Blockers.
 - Stale conditions.
 - Risky conditions.
+- Transactions: counts by state and the most recent five non-Committed transactions.
 - Next command.
 - Reason for the next command.
 
@@ -481,6 +513,7 @@ Findings can include:
 - Missing or stale score.
 - Missing retrospective.
 - Missing performance ledger entries.
+- Failed or aborted transactions for the active or most-recent deployment. Earlier-deployment transactions remain visible through maw status but are not surfaced as actionable findings.
 
 Output includes:
 
@@ -764,6 +797,7 @@ Use when:
 - Auditing an already persisted deployment.
 - Producing durable plan-check records for retrospectives.
 - Diagnosing why orchestration pre-flight rejected a plan.
+- Satisfying the enforced precondition for approval and run.
 
 Issue categories:
 
@@ -798,6 +832,7 @@ Reads:
 
 - state/approvals.json
 - state/deployment_plan.json
+- state/plan_checks.json
 
 Writes:
 
@@ -806,6 +841,7 @@ Writes:
 
 Status effects:
 
+- approved requires a current passing plan-check for the deployment.
 - approved sets deployment status to approved and fills approved_at.
 - rejected sets deployment status to blocked and clears approved_at.
 
@@ -836,6 +872,8 @@ Reads:
 - state/task_board.json
 - state/agent_registry.json
 - state/approvals.json
+- state/plan_checks.json
+- state/context_checks.json
 - state/model_config.json for model tasks and reviewers.
 - Task input context files.
 - Dependency artifact files.
@@ -848,6 +886,7 @@ Writes:
 - Updates artifacts/artifact_index.json.
 - Updates state/metrics.json.
 - Updates state/chat.json for blockers or review defects.
+- Upserts task context checks in state/context_checks.json.
 - Writes structured reviews to state/review_log.json for review-required deliverables.
 - Writes consensus to state/consensus.json after spawned reviews.
 
@@ -861,7 +900,13 @@ Executor behavior:
 Approval behavior:
 
 - If a deployment requires approval, an approved record must exist before run.
+- Every run requires a current passing plan-check before any task starts.
 - Use --rerun only for intentional reruns of completed or failed deployments.
+
+Context behavior:
+
+- Before each task starts, run executes context-check for that task.
+- A failing context-check marks the task blocked, records a chat blocker, and skips the adapter/model/local command call for that task.
 
 Review behavior:
 
@@ -881,6 +926,8 @@ Exit behavior:
 Common blockers:
 
 - Deployment DP-001 requires explicit approval before execution.
+- Deployment DP-001 requires a current passing plan-check before execution.
+- Context check failed for T-001: CONTEXT_FILE_MISSING.
 - Local command task T-001 requires --execute.
 - Command is not allowlisted for <agent_id>: <command>.
 - Dependency not completed: T-001.
@@ -997,17 +1044,21 @@ Reads:
 
 - state/review_log.json
 - state/task_board.json
+- artifacts/artifact_index.json
+- Cited artifact files
 - state/consensus.json
 
 Writes:
 
 - Upserts the load-bearing consensus record for the task in state/consensus.json.
 - Marks older consensus records for that task as non-load-bearing.
+- Marks reviews with false citation targets as malformed abstentions in state/review_log.json.
 
 Consensus logic:
 
 - Pass requires reviewer convergence and citations.
 - Fail wins when a reviewer fails with valid citations.
+- Citations must reference indexed model_output or command_output artifacts for the reviewed task, and cited line ranges must exist in the artifact file.
 - Split means disagreement without satisfying pass or fail rules.
 - Unverifiable means reviewers explicitly marked unverifiable, or all available criterion signal is abstention-only.
 - Overall pass requires every criterion to pass.

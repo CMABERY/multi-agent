@@ -4,8 +4,10 @@ import {
   ArtifactIndexSchema,
   ConsensusStoreSchema,
   DeploymentPlanStoreSchema,
+  PermissionAuditStoreSchema,
   ReviewLogSchema,
-  TaskBoardSchema
+  TaskBoardSchema,
+  TransactionStoreSchema
 } from "./schemas.js";
 import { hasLegacyReviews, migrateLegacyReviews } from "./reviews.js";
 import { loadJson, loadJsonOrDefault } from "./storage.js";
@@ -36,6 +38,12 @@ export async function validateWorkspace(root: string): Promise<ValidationResult>
   const consensusResult = ConsensusStoreSchema.safeParse(
     await loadJsonOrDefault(root, "state/consensus.json", { consensus_records: [] })
   );
+  const auditResult = PermissionAuditStoreSchema.safeParse(
+    await loadJsonOrDefault(root, "state/permission_audit.json", { events: [] })
+  );
+  const transactionsResult = TransactionStoreSchema.safeParse(
+    await loadJsonOrDefault(root, "state/transactions.json", { transactions: [] })
+  );
 
   for (const [name, result] of [
     ["agent_registry", registryResult],
@@ -44,7 +52,9 @@ export async function validateWorkspace(root: string): Promise<ValidationResult>
     ["approvals", approvalResult],
     ["artifact_index", artifactResult],
     ["review_log", reviewResult],
-    ["consensus", consensusResult]
+    ["consensus", consensusResult],
+    ["permission_audit", auditResult],
+    ["transactions", transactionsResult]
   ] as const) {
     if (!result.success) {
       issues.push({ code: "SCHEMA_INVALID", message: "" + (name) + " is invalid: " + (result.error.message) });
@@ -57,7 +67,9 @@ export async function validateWorkspace(root: string): Promise<ValidationResult>
     !approvalResult.success ||
     !artifactResult.success ||
     !reviewResult.success ||
-    !consensusResult.success
+    !consensusResult.success ||
+    !auditResult.success ||
+    !transactionsResult.success
   ) {
     return { valid: false, issues };
   }

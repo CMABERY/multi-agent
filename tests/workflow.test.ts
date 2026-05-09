@@ -6,7 +6,7 @@ import { recordApproval } from "../src/approvals.js";
 import { registerAgent } from "../src/agents.js";
 import { addArtifact } from "../src/artifacts.js";
 import { createIntent, orchestrateIntent } from "../src/orchestrator.js";
-import { collectPlanIssues } from "../src/planCheck.js";
+import { collectPlanIssues, runPlanCheck } from "../src/planCheck.js";
 import { generateReport } from "../src/report.js";
 import { recordReview } from "../src/reviews.js";
 import { runDeployment } from "../src/runner.js";
@@ -266,7 +266,8 @@ function workflowAssignment(overrides: Record<string, unknown> = {}) {
 async function seedApprovedDeployment(
   root: string,
   tasks: Array<Record<string, unknown>>,
-  assignments: Array<Record<string, unknown>>
+  assignments: Array<Record<string, unknown>>,
+  options: { planCheck?: boolean } = {}
 ): Promise<void> {
   await saveJson(root, "state/task_board.json", { tasks });
   await saveJson(root, "state/deployment_plan.json", {
@@ -282,6 +283,20 @@ async function seedApprovedDeployment(
       }
     ]
   });
+  if (options.planCheck !== false) {
+    await saveJson(root, "state/plan_checks.json", {
+      plan_checks: [
+        {
+          check_id: "PC-001",
+          deployment_id: "DP-001",
+          status: "pass",
+          issues: [],
+          created_at: "2026-05-08T00:00:01.000Z",
+          updated_at: "2026-05-08T00:00:01.000Z"
+        }
+      ]
+    });
+  }
 }
 
 describe("agentic orchestrator workflow", () => {
@@ -381,6 +396,7 @@ describe("agentic orchestrator workflow", () => {
         intentId: intent.intent_id,
         modelClient
       });
+      await runPlanCheck(root, { deploymentId: orchestrated.deployment_id });
       await recordApproval(root, {
         deploymentId: orchestrated.deployment_id,
         approver: "test",
@@ -444,7 +460,8 @@ describe("agentic orchestrator workflow", () => {
           destructive_actions: false,
           credential_access: false,
           paid_actions: false,
-          public_actions: false
+          public_actions: false,
+          policy_grants: []
         },
         max_cost_usd: 1
       });
@@ -498,6 +515,7 @@ describe("agentic orchestrator workflow", () => {
       const modelClient = {
         createResponse: vi.fn().mockResolvedValue(modelResponse("current sourced brief"))
       };
+      await runPlanCheck(root, { deploymentId: "DP-001" });
       await runDeployment(root, { deploymentId: "DP-001", modelClient });
 
       const request = modelClient.createResponse.mock.calls[0]?.[0];
@@ -526,6 +544,7 @@ describe("agentic orchestrator workflow", () => {
         intentId: intent.intent_id,
         modelClient
       });
+      await runPlanCheck(root, { deploymentId: orchestrated.deployment_id });
       await recordApproval(root, {
         deploymentId: orchestrated.deployment_id,
         approver: "test",
@@ -739,6 +758,7 @@ describe("agentic orchestrator workflow", () => {
       const registry = await loadJson(root, "state/agent_registry.json");
       const researcher = registry.agents.find((agent: { agent_id: string }) => agent.agent_id === "researcher_1");
       researcher.allowed_tools = ["web_search"];
+      researcher.permissions.policy_grants = ["PublicSearch"];
       await saveJson(root, "state/agent_registry.json", registry);
       const intent = await createIntent(root, { text: "Research current public information." });
       const modelClient = {
@@ -941,7 +961,8 @@ describe("agentic orchestrator workflow", () => {
         destructive_actions: false,
         credential_access: false,
         paid_actions: false,
-        public_actions: false
+        public_actions: false,
+        policy_grants: []
       };
       const issues = collectPlanIssues({
         plan: {
@@ -1053,6 +1074,19 @@ describe("agentic orchestrator workflow", () => {
         /approval/i
       );
 
+      await expect(
+        recordApproval(root, {
+          deploymentId: deployment_id,
+          approver: "human",
+          decision: "approved",
+          scope: "Run the generated deployment plan."
+        })
+      ).rejects.toThrow(/current passing plan-check/i);
+
+      const approvalsBeforePlanCheck = await loadJson(root, "state/approvals.json");
+      expect(approvalsBeforePlanCheck.approvals).toEqual([]);
+
+      await runPlanCheck(root, { deploymentId: deployment_id });
       await recordApproval(root, {
         deploymentId: deployment_id,
         approver: "human",
@@ -1071,6 +1105,81 @@ describe("agentic orchestrator workflow", () => {
     });
   });
 
+  test("deployment run requires a passing plan-check even when status is already approved", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+      await seedApprovedDeployment(root, [workflowTask()], [workflowAssignment()], { planCheck: false });
+      const modelClient = {
+        createResponse: vi.fn().mockResolvedValue(modelResponse("review output"))
+      };
+
+      await expect(
+        runDeployment(root, { deploymentId: "DP-001", modelClient })
+      ).rejects.toThrow(/current passing plan-check/i);
+      expect(modelClient.createResponse).not.toHaveBeenCalled();
+
+      await runPlanCheck(root, { deploymentId: "DP-001" });
+      const result = await runDeployment(root, { deploymentId: "DP-001", modelClient });
+
+      expect(result.completed).toEqual(["T-001"]);
+    });
+  });
+
+  test("deployment run refuses a failing plan-check", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+      await seedApprovedDeployment(
+        root,
+        [workflowTask({ owner_agent_id: "builder_1", owner_role: "Builder Agent", executor: "dry_run", output_required: "Implementation draft" })],
+        [workflowAssignment({ agent_id: "builder_1", executor: "dry_run" })]
+      );
+      const check = await runPlanCheck(root, { deploymentId: "DP-001" });
+      const modelClient = {
+        createResponse: vi.fn().mockResolvedValue(modelResponse("should not run"))
+      };
+
+      expect(check.status).toBe("fail");
+      await expect(
+        runDeployment(root, { deploymentId: "DP-001", modelClient })
+      ).rejects.toThrow(/current passing plan-check/i);
+      expect(modelClient.createResponse).not.toHaveBeenCalled();
+    });
+  });
+
+  test("context-check failure blocks a task before adapter execution", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+      await seedApprovedDeployment(
+        root,
+        [workflowTask({ input_context: ["state/missing-context.md"] })],
+        [workflowAssignment()]
+      );
+      await runPlanCheck(root, { deploymentId: "DP-001" });
+      const modelClient = {
+        createResponse: vi.fn().mockResolvedValue(modelResponse("should not run"))
+      };
+
+      const result = await runDeployment(root, { deploymentId: "DP-001", modelClient });
+
+      const tasks = await loadJson(root, "state/task_board.json");
+      const checks = await loadJson(root, "state/context_checks.json");
+      const chat = await loadJson(root, "state/chat.json");
+      expect(result.completed).toEqual([]);
+      expect(result.failed).toEqual(["T-001"]);
+      expect(tasks.tasks[0]).toMatchObject({
+        status: "blocked",
+        blocker: expect.stringContaining("Context check failed")
+      });
+      expect(checks.context_checks[0]).toMatchObject({
+        task_id: "T-001",
+        status: "fail"
+      });
+      expect(checks.context_checks[0].issues.map((issue: { code: string }) => issue.code)).toContain("CONTEXT_FILE_MISSING");
+      expect(chat.messages.some((message: { summary: string }) => message.summary.includes("Context check failed for T-001"))).toBe(true);
+      expect(modelClient.createResponse).not.toHaveBeenCalled();
+    });
+  });
+
   test("completed deployment can be run again only with explicit rerun", async () => {
     await withWorkspace(async (root) => {
       await initWorkspace(root);
@@ -1082,6 +1191,7 @@ describe("agentic orchestrator workflow", () => {
         intentId: intent.intent_id,
         modelClient
       });
+      await runPlanCheck(root, { deploymentId: deployment_id });
       await recordApproval(root, {
         deploymentId: deployment_id,
         approver: "human",
@@ -1121,6 +1231,7 @@ describe("agentic orchestrator workflow", () => {
         intentId: intent.intent_id,
         modelClient
       });
+      await runPlanCheck(root, { deploymentId: deployment_id });
       await recordApproval(root, {
         deploymentId: deployment_id,
         approver: "human",
@@ -1466,6 +1577,7 @@ describe("agentic orchestrator workflow", () => {
         intentId: intent.intent_id,
         modelClient
       });
+      await runPlanCheck(root, { deploymentId: deployment_id });
       await recordApproval(root, {
         deploymentId: deployment_id,
         approver: "human",
@@ -1501,7 +1613,8 @@ describe("agentic orchestrator workflow", () => {
           destructive_actions: false,
           credential_access: false,
           paid_actions: false,
-          public_actions: false
+          public_actions: false,
+          policy_grants: ["LocalCommandExecute"]
         }
       });
 
@@ -1552,6 +1665,7 @@ describe("agentic orchestrator workflow", () => {
         ]
       });
 
+      await runPlanCheck(root, { deploymentId: "DP-001" });
       await expect(runDeployment(root, { deploymentId: "DP-001" })).rejects.toThrow(
         /--execute/i
       );
@@ -1628,6 +1742,7 @@ describe("agentic orchestrator workflow", () => {
       });
 
       const modelClient = { createResponse: vi.fn().mockResolvedValue(modelResponse("scoped review")) };
+      await runPlanCheck(root, { deploymentId: "DP-001" });
       await runDeployment(root, { deploymentId: "DP-001", modelClient });
 
       const firstCall = modelClient.createResponse.mock.calls[0];
@@ -1661,6 +1776,7 @@ describe("agentic orchestrator workflow", () => {
             approval_required: false,
             status: "completed",
             artifacts: [],
+            deployment_id: "DP-001",
             created_at: "2026-05-08T00:00:00.000Z",
             updated_at: "2026-05-08T00:00:00.000Z"
           },
@@ -1680,6 +1796,7 @@ describe("agentic orchestrator workflow", () => {
             approval_required: false,
             status: "queued",
             artifacts: [],
+            deployment_id: "DP-001",
             created_at: "2026-05-08T00:00:00.000Z",
             updated_at: "2026-05-08T00:00:00.000Z"
           }
@@ -1715,6 +1832,7 @@ describe("agentic orchestrator workflow", () => {
       });
 
       const modelClient = { createResponse: vi.fn().mockResolvedValue(modelResponse("review output")) };
+      await runPlanCheck(root, { deploymentId: "DP-001" });
       await runDeployment(root, { deploymentId: "DP-001", modelClient });
 
       const firstCall = modelClient.createResponse.mock.calls[0];
@@ -1884,6 +2002,7 @@ describe("agentic orchestrator workflow", () => {
         intentId: intent.intent_id,
         modelClient
       });
+      await runPlanCheck(root, { deploymentId: deployment_id });
       await recordApproval(root, {
         deploymentId: deployment_id,
         approver: "human",
@@ -1979,6 +2098,7 @@ describe("agentic orchestrator workflow", () => {
       };
 
       const { deployment_id } = await orchestrateIntent(root, { intentId: intent.intent_id, modelClient });
+      await runPlanCheck(root, { deploymentId: deployment_id });
       await recordApproval(root, {
         deploymentId: deployment_id,
         approver: "human",

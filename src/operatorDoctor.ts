@@ -3,6 +3,10 @@ import { join } from "node:path";
 import type { z, ZodTypeAny } from "zod";
 import { readOperatorState, type OperatorCondition, type OperatorState } from "./operatorState.js";
 import {
+  findActionableTransactions,
+  resolveDoctorDeploymentId
+} from "./operatorTransactions.js";
+import {
   AgentRegistrySchema,
   ChatStoreSchema,
   ContextCheckStoreSchema,
@@ -67,6 +71,7 @@ export async function runOperatorDoctor(root: string): Promise<DoctorReport> {
   await addChatFindings(root, findings);
   await addPlanCheckFindings(root, operatorState, findings);
   await addContextCheckFindings(root, findings);
+  await addTransactionFindings(root, operatorState, findings);
 
   const deduped = dedupeFindings(findings);
   return {
@@ -267,6 +272,72 @@ async function addContextCheckFindings(root: string, findings: DoctorFinding[]):
       repair: firstIssue
         ? firstIssue.recommended_fix + " Then run maw context-check --task " + check.task_id + "."
         : "inspect context check issues, repair the task context, then run maw context-check --task " + check.task_id + "."
+    });
+  }
+}
+
+async function addTransactionFindings(
+  root: string,
+  state: OperatorState,
+  findings: DoctorFinding[]
+): Promise<void> {
+  const deploymentId = await resolveDoctorDeploymentId(root, state.active_deployment_id);
+  if (!deploymentId) return;
+  const transactions = await findActionableTransactions(root, deploymentId);
+  for (const tx of transactions) {
+    const reason = tx.failure_reason ? ": " + tx.failure_reason : "";
+    if (tx.status === "Aborted") {
+      findings.push({
+        code: "TRANSACTION_ABORTED",
+        severity: "high",
+        target: tx.transaction_id,
+        message:
+          "Transaction " +
+          tx.transaction_id +
+          " (" +
+          tx.action_kind +
+          " for " +
+          tx.task_id +
+          "/" +
+          tx.agent_id +
+          ") was aborted by policy" +
+          reason +
+          (tx.permission_audit_event_id
+            ? " (audit event " + tx.permission_audit_event_id + ")."
+            : "."),
+        repair:
+          "grant the missing permission to " +
+          tx.agent_id +
+          " or remove the action from the task, then run maw plan-check --deployment " +
+          deploymentId +
+          "."
+      });
+      continue;
+    }
+    findings.push({
+      code: "TRANSACTION_FAILED",
+      severity: "high",
+      target: tx.transaction_id,
+      message:
+        "Transaction " +
+        tx.transaction_id +
+        " (" +
+        tx.action_kind +
+        " for " +
+        tx.task_id +
+        "/" +
+        tx.agent_id +
+        ") failed during execution" +
+        reason +
+        (tx.permission_audit_event_id
+          ? " (audit event " + tx.permission_audit_event_id + ")."
+          : "."),
+      repair:
+        "inspect artifacts/runs/" +
+        tx.task_id +
+        "/ and the failure reason, repair the cause, then run maw run --deployment " +
+        deploymentId +
+        " --rerun --execute."
     });
   }
 }

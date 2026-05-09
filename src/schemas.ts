@@ -1,6 +1,13 @@
 import { z } from "zod";
 
 export const ExecutorTypeSchema = z.enum(["model_agent", "local_command", "dry_run"]);
+export const PermissionGrantSchema = z.enum([
+  "PublicSearch",
+  "PrivateQueryEgress",
+  "LocalCommandExecute",
+  "CommitChange",
+  "ExternalShare"
+]);
 export const ModelTierSchema = z.enum(["low", "mid", "high"]);
 export const RiskLevelSchema = z.enum(["low", "medium", "high"]);
 export const ReviewerPersonaSchema = z.enum([
@@ -35,7 +42,8 @@ export const AgentSchema = z
       destructive_actions: z.boolean(),
       credential_access: z.boolean(),
       paid_actions: z.boolean(),
-      public_actions: z.boolean()
+      public_actions: z.boolean(),
+      policy_grants: z.array(PermissionGrantSchema).default([])
     }),
     max_cost_usd: z.number().nonnegative().optional(),
     performance: z
@@ -585,6 +593,46 @@ export const BootstrapIndexSchema = z.object({
   bootstraps: z.array(BootstrapIndexEntrySchema)
 });
 
+export const PermissionAuditEventSchema = z.object({
+  event_id: z.string().regex(/^PA-\d{3,}$/),
+  created_at: z.string(),
+  deployment_id: z.string().optional(),
+  task_id: z.string().min(1),
+  agent_id: z.string().min(1),
+  action_kind: z.string().min(1),
+  action_signals: z.record(z.union([z.number(), z.string()])).default({}),
+  required_grants: z.array(PermissionGrantSchema).default([]),
+  granted_grants: z.array(PermissionGrantSchema).default([]),
+  missing_grants: z.array(PermissionGrantSchema).default([]),
+  decision: z.enum(["allow", "deny"]),
+  reason: z.string().min(1)
+});
+
+export const PermissionAuditStoreSchema = z.object({
+  events: z.array(PermissionAuditEventSchema).default([])
+});
+
+export const TransactionStatusSchema = z.enum(["Planned", "Committed", "Failed", "Aborted"]);
+
+export const TransactionSchema = z.object({
+  transaction_id: z.string().regex(/^TX-\d{3,}$/),
+  deployment_id: z.string().optional(),
+  task_id: z.string().min(1),
+  agent_id: z.string().min(1),
+  action_kind: z.string().min(1),
+  action_signals: z.record(z.union([z.number(), z.string()])).default({}),
+  status: TransactionStatusSchema,
+  permission_audit_event_id: z.string().optional(),
+  started_at: z.string(),
+  updated_at: z.string(),
+  completed_at: z.string().optional(),
+  failure_reason: z.string().optional()
+});
+
+export const TransactionStoreSchema = z.object({
+  transactions: z.array(TransactionSchema).default([])
+});
+
 export const OperatorEventOutcomeSchema = z.enum(["success", "failure", "invalid", "help"]);
 
 export const OperatorEventSchema = z.object({
@@ -665,6 +713,12 @@ export type BootstrapCounterContext = z.infer<typeof BootstrapCounterContextSche
 export type BootstrapPacket = z.infer<typeof BootstrapPacketSchema>;
 export type BootstrapIndexEntry = z.infer<typeof BootstrapIndexEntrySchema>;
 export type BootstrapIndex = z.infer<typeof BootstrapIndexSchema>;
+export type PermissionGrant = z.infer<typeof PermissionGrantSchema>;
+export type PermissionAuditEvent = z.infer<typeof PermissionAuditEventSchema>;
+export type PermissionAuditStore = z.infer<typeof PermissionAuditStoreSchema>;
+export type TransactionStatus = z.infer<typeof TransactionStatusSchema>;
+export type Transaction = z.infer<typeof TransactionSchema>;
+export type TransactionStore = z.infer<typeof TransactionStoreSchema>;
 export type OperatorEventOutcome = z.infer<typeof OperatorEventOutcomeSchema>;
 export type OperatorEvent = z.infer<typeof OperatorEventSchema>;
 export type OperatorPendingRecovery = z.infer<typeof OperatorPendingRecoverySchema>;

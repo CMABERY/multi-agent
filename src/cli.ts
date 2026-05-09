@@ -13,6 +13,10 @@ import {
 } from "./operatorExperience.js";
 import { renderCurrentTransitionGuidance } from "./operatorGuidance.js";
 import {
+  readTransactionSummary,
+  type TransactionStatusSummary
+} from "./operatorTransactions.js";
+import {
   readOperatorState,
   resolveActiveDeploymentId,
   resolveActiveIntentId,
@@ -53,7 +57,11 @@ export function createCli(root = process.cwd()): Command {
   });
 
   program.command("status").description("Summarize current workflow state and next action").action(async () => {
-    console.log(renderOperatorStatus(await readOperatorState(root)));
+    const [state, transactions] = await Promise.all([
+      readOperatorState(root),
+      readTransactionSummary(root)
+    ]);
+    console.log(renderOperatorStatus(state, transactions));
   });
 
   program
@@ -557,7 +565,10 @@ function parseMaxCost(raw: string | undefined): number | undefined {
   return value;
 }
 
-function renderOperatorStatus(state: OperatorState): string {
+function renderOperatorStatus(
+  state: OperatorState,
+  transactions: TransactionStatusSummary
+): string {
   return [
     "Workflow State: " + state.workflow_state,
     "Active Intent: " + (state.active_intent_id ?? "none"),
@@ -576,9 +587,48 @@ function renderOperatorStatus(state: OperatorState): string {
     "Risky Conditions:",
     ...renderConditions(state.risky_conditions),
     "",
+    "Transactions:",
+    ...renderTransactions(transactions),
+    "",
     "Next: " + state.recommended_next_command,
     "Reason: " + state.recommended_next_reason
   ].join("\n");
+}
+
+function renderTransactions(summary: TransactionStatusSummary): string[] {
+  const counts = summary.counts;
+  const lines = [
+    "- Counts: Planned=" +
+      counts.Planned +
+      " Committed=" +
+      counts.Committed +
+      " Failed=" +
+      counts.Failed +
+      " Aborted=" +
+      counts.Aborted
+  ];
+  if (summary.recent_non_committed.length === 0) {
+    lines.push("- Recent non-Committed: none");
+    return lines;
+  }
+  lines.push("- Recent non-Committed:");
+  for (const tx of summary.recent_non_committed) {
+    const reason = tx.failure_reason ? ": " + tx.failure_reason : "";
+    lines.push(
+      "  - " +
+        tx.transaction_id +
+        " [" +
+        tx.status +
+        "] " +
+        tx.action_kind +
+        " " +
+        tx.task_id +
+        "/" +
+        tx.agent_id +
+        reason
+    );
+  }
+  return lines;
 }
 
 function renderReadiness(readiness: OperatorReadiness): string[] {
