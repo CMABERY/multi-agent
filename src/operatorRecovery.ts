@@ -196,6 +196,40 @@ export async function buildRecoveryPacket(root: string, error: unknown): Promise
     );
   }
 
+  match = /^Either --text or --text-file is required\.$/.exec(message);
+  if (match) {
+    return packet(
+      message,
+      "intent text was not supplied; commands need --text or --text-file.",
+      "safe; no intent was written.",
+      "maw status",
+      "maw intent create --text-file path/to/intent.txt"
+    );
+  }
+
+  match = /^Pass either --text or --text-file, not both\.$/.exec(message);
+  if (match) {
+    return packet(
+      message,
+      "the two text inputs are mutually exclusive.",
+      "safe; no intent was written.",
+      "maw status",
+      "maw intent create --text-file path/to/intent.txt"
+    );
+  }
+
+  match = /^Could not read --text-file (.+)\.$/.exec(message);
+  if (match?.[1]) {
+    const path = match[1];
+    return packet(
+      message,
+      "the file at " + path + " is missing or not readable from the current working directory.",
+      "safe; no intent was written.",
+      "maw status",
+      "maw intent create --text-file path/to/intent.txt"
+    );
+  }
+
   match = /^Intent text must be non-empty\.$/.exec(message);
   if (match) {
     return packet(

@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { Command } from "commander";
 import { recordApproval } from "./approvals.js";
 import { renderAutoPlanResult, runAutoPlan } from "./autoPlan.js";
@@ -75,20 +76,30 @@ export function createCli(root = process.cwd()): Command {
   const intent = program.command("intent").description("Manage user intents");
   intent
     .command("create")
-    .requiredOption("--text <text>", "User task or intent")
+    .option("--text <text>", "User task or intent (inline text)")
+    .option("--text-file <path>", "Read user task or intent from a file at path")
     .option("--constraint <constraint...>", "Constraint to add")
     .option("--risk <risk>", "Risk level: low, medium, high", "medium")
     .option("--budget <budget>", "Budget description")
-    .action(async (options: { text: string; constraint?: string[]; risk: string; budget?: string }) => {
-      const created = await createIntent(root, {
-        text: options.text,
-        constraints: options.constraint ?? [],
-        riskLevel: options.risk,
-        budget: options.budget
-      });
-      console.log("Created intent " + created.intent_id + ".");
-      await printTransitionGuidance(root);
-    });
+    .action(
+      async (options: {
+        text?: string;
+        textFile?: string;
+        constraint?: string[];
+        risk: string;
+        budget?: string;
+      }) => {
+        const text = await resolveIntentText(options);
+        const created = await createIntent(root, {
+          text,
+          constraints: options.constraint ?? [],
+          riskLevel: options.risk,
+          budget: options.budget
+        });
+        console.log("Created intent " + created.intent_id + ".");
+        await printTransitionGuidance(root);
+      }
+    );
 
   program
     .command("orchestrate")
@@ -103,7 +114,8 @@ export function createCli(root = process.cwd()): Command {
 
   program
     .command("plan")
-    .requiredOption("--text <text>", "User task or intent")
+    .option("--text <text>", "User task or intent (inline text)")
+    .option("--text-file <path>", "Read user task or intent from a file at path")
     .option("--constraint <constraint...>", "Constraint to add")
     .option("--risk <risk>", "Risk level: low, medium, high", "medium")
     .option("--budget <budget>", "Budget description")
@@ -113,14 +125,16 @@ export function createCli(root = process.cwd()): Command {
     )
     .action(
       async (options: {
-        text: string;
+        text?: string;
+        textFile?: string;
         constraint?: string[];
         risk: string;
         budget?: string;
         json?: boolean;
       }) => {
+        const text = await resolveIntentText(options);
         const result = await runAutoPlan(root, {
-          text: options.text,
+          text,
           constraints: options.constraint ?? [],
           riskLevel: options.risk,
           budget: options.budget
@@ -514,6 +528,24 @@ export function createCli(root = process.cwd()): Command {
 
 async function printTransitionGuidance(root: string): Promise<void> {
   console.log(await renderCurrentTransitionGuidance(root));
+}
+
+async function resolveIntentText(options: {
+  text?: string;
+  textFile?: string;
+}): Promise<string> {
+  if (options.text !== undefined && options.textFile !== undefined) {
+    throw new Error("Pass either --text or --text-file, not both.");
+  }
+  if (options.text !== undefined) return options.text;
+  if (options.textFile !== undefined) {
+    try {
+      return await readFile(options.textFile, "utf8");
+    } catch {
+      throw new Error("Could not read --text-file " + options.textFile + ".");
+    }
+  }
+  throw new Error("Either --text or --text-file is required.");
 }
 
 function parseMaxCost(raw: string | undefined): number | undefined {

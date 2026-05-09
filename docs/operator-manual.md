@@ -250,9 +250,9 @@ Default agents in a fresh workspace:
 | Command | Required inputs | Optional inputs | Primary writes | Model call |
 | --- | --- | --- | --- | --- |
 | init | none | none | default workspace files | no |
-| intent create | --text | --constraint, --risk, --budget | state/intent_queue.json | no |
+| intent create | --text or --text-file | --constraint, --risk, --budget | state/intent_queue.json | no |
 | orchestrate | none | --intent (defaults to active), --json | prompt contract, tasks, deployment, decisions, metrics | yes |
-| plan | --text | --constraint, --risk, --budget, --json | intent, prompt contract, tasks, deployment, decisions, metrics, plan-check | yes |
+| plan | --text or --text-file | --constraint, --risk, --budget, --json | intent, prompt contract, tasks, deployment, decisions, metrics, plan-check | yes |
 | plan-check | none | --deployment (defaults to active), --json | state/plan_checks.json | no |
 | approval record | --approver, --scope | --deployment (defaults to active), --decision | approvals and deployment status | no |
 | run | none | --deployment (defaults to active), --execute, --rerun | task and deployment state, artifacts, metrics, reviews, consensus | depends on tasks |
@@ -535,7 +535,8 @@ Command:
 
 Inputs:
 
-- --text <text>: required. User request or operating objective.
+- --text <text>: optional. User request or operating objective as inline text. Either --text or --text-file is required; passing both refuses the command.
+- --text-file <path>: optional. Read the user request from a file at path. Useful when the text contains quotation marks, newlines, or shell metacharacters that would otherwise need escaping.
 - --constraint <constraint...>: optional. Adds one or more constraints.
 - --risk <risk>: optional. One of low, medium, or high. Defaults to medium.
 - --budget <budget>: optional. Free-text budget description.
@@ -544,6 +545,7 @@ Examples:
 
     node dist/src/index.js intent create --text "Draft a launch plan" --risk medium
     node dist/src/index.js intent create --text "Analyze regulated workflow" --risk high --constraint "No external actions" "Cite all generated evidence"
+    node dist/src/index.js intent create --text-file ./intent.txt --risk high
     node dist/src/index.js intent create --text "Prototype local report" --budget "Keep model cost under $1"
 
 Reads:
@@ -655,7 +657,8 @@ Command:
 
 Inputs:
 
-- --text <text>: required. User request or operating objective.
+- --text <text>: optional. User request or operating objective as inline text. Either --text or --text-file is required; passing both refuses the command.
+- --text-file <path>: optional. Read the user request from a file at path. Same semantics as intent create's --text-file.
 - --constraint <constraint...>: optional. Adds one or more constraints.
 - --risk <risk>: optional. One of low, medium, or high. Defaults to medium.
 - --budget <budget>: optional. Free-text budget description.
@@ -1748,6 +1751,31 @@ Derived files include:
 - state/learning_memory.json
 
 ## Troubleshooting
+
+### Quotation Marks In Intent Text
+
+Symptom:
+
+- Inline --text containing double quotes triggers shell parse errors or splits into the wrong tokens, so MAW receives garbled text or rejects the command with a Commander error.
+
+Three resolutions:
+
+- Use --text-file to read the text from a file. The shell never re-parses file content, so quotation marks, newlines, and shell metacharacters all survive intact:
+
+      node dist/src/index.js intent create --text-file ./intent.txt
+      node dist/src/index.js plan --text-file ./intent.txt --risk medium
+
+- Wrap the inline value in single quotes when your shell allows it. Single-quoted strings do not interpret embedded double quotes:
+
+      node dist/src/index.js intent create --text 'Investigate "deep search" trade-offs.'
+
+- Or escape inline double quotes for your shell. PowerShell uses a backtick in front of each inner double quote; bash uses a backslash. Both forms also work but are easier to mistype than --text-file.
+
+Recovery packets cover the three input mistakes that --text-file enables:
+
+- Either --text or --text-file is required.
+- Pass either --text or --text-file, not both.
+- Could not read --text-file <path>.
 
 ### Invalid Risk Level
 

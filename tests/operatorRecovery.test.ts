@@ -234,6 +234,48 @@ describe("operator recovery packets", () => {
     });
   });
 
+  test("missing intent text packet recommends --text or --text-file", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+
+      const packet = await expectPacket(
+        root,
+        "Either --text or --text-file is required."
+      );
+
+      expect(packet.state_safety).toBe("safe; no intent was written.");
+      expect(packet.next_command).toMatch(/--text-file/);
+    });
+  });
+
+  test("conflicting text inputs packet recommends one or the other", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+
+      const packet = await expectPacket(
+        root,
+        "Pass either --text or --text-file, not both."
+      );
+
+      expect(packet.state_safety).toBe("safe; no intent was written.");
+      expect(packet.corrective_command).toBe("maw status");
+    });
+  });
+
+  test("unreadable --text-file packet routes to checking the path", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+
+      const packet = await expectPacket(
+        root,
+        "Could not read --text-file ./missing.txt."
+      );
+
+      expect(packet.why).toContain("file");
+      expect(packet.state_safety).toBe("safe; no intent was written.");
+    });
+  });
+
   test("invalid risk level packet routes to status with a corrected example", async () => {
     await withWorkspace(async (root) => {
       await initWorkspace(root);

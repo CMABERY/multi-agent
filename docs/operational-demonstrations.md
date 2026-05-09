@@ -178,6 +178,15 @@ Run high-risk reviewable intent:
 
     node $MawCli intent create --text "Analyze a high-risk deployment decision and produce a reviewable recommendation." --risk high --constraint "Require independent review." --constraint "Every acceptance criterion must be evidence-checkable."
 
+When the intent contains quotation marks, newlines, or shell metacharacters that fight the shell, write the text to a file and pass --text-file instead:
+
+    Set-Content -Path intent.txt -Value 'Investigate "deep search" trade-offs and produce a "ranked list" of candidates.' -Encoding UTF8
+    node $MawCli intent create --text-file intent.txt --risk high
+
+The same flag works on plan:
+
+    node $MawCli plan --text-file intent.txt --risk high
+
 Inspect:
 
     Get-Content state\intent_queue.json | ConvertFrom-Json | Select-Object -ExpandProperty intents
@@ -187,6 +196,7 @@ Operator decision:
 - Use low only when mistakes have low consequence.
 - Use medium for normal deliverables.
 - Use high when the output needs stronger independent verification.
+- Prefer --text-file whenever the wording would force shell escaping; the file content is read verbatim.
 
 ## Demo 4: Approval Required Before Execution
 

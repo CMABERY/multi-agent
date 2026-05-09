@@ -584,6 +584,94 @@ describe("operator navigation commands", () => {
   });
 });
 
+describe("intent text input forms", () => {
+  test("intent create --text-file reads text from a file", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+      const path = join(root, "intent.txt");
+      await writeFile(
+        path,
+        'Build a tool that supports "deep search" mode and returns a "ranked list".',
+        "utf8"
+      );
+
+      const output = await runCli(root, ["intent", "create", "--text-file", path]);
+
+      expect(output).toContain("Created intent I-001.");
+      const queue = JSON.parse(
+        await readFile(join(root, "state/intent_queue.json"), "utf8")
+      );
+      expect(queue.intents[0].text).toContain('"deep search"');
+      expect(queue.intents[0].text).toContain('"ranked list"');
+    });
+  });
+
+  test("intent create rejects --text and --text-file together", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+      const path = join(root, "intent.txt");
+      await writeFile(path, "from file", "utf8");
+
+      await expect(
+        runCli(root, ["intent", "create", "--text", "from flag", "--text-file", path])
+      ).rejects.toThrow(/Pass either --text or --text-file, not both/);
+
+      const queue = JSON.parse(
+        await readFile(join(root, "state/intent_queue.json"), "utf8")
+      );
+      expect(queue.intents).toEqual([]);
+    });
+  });
+
+  test("intent create rejects when neither --text nor --text-file is supplied", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+
+      await expect(runCli(root, ["intent", "create"])).rejects.toThrow(
+        /Either --text or --text-file is required/
+      );
+
+      const queue = JSON.parse(
+        await readFile(join(root, "state/intent_queue.json"), "utf8")
+      );
+      expect(queue.intents).toEqual([]);
+    });
+  });
+
+  test("intent create --text-file rejects when the file is missing", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+      const missing = join(root, "does-not-exist.txt");
+
+      await expect(
+        runCli(root, ["intent", "create", "--text-file", missing])
+      ).rejects.toThrow(/Could not read --text-file/);
+
+      const queue = JSON.parse(
+        await readFile(join(root, "state/intent_queue.json"), "utf8")
+      );
+      expect(queue.intents).toEqual([]);
+    });
+  });
+
+  test("intent create --text-file rejects whitespace-only file content", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+      const path = join(root, "blank.txt");
+      await writeFile(path, "   \n\n\t  ", "utf8");
+
+      await expect(
+        runCli(root, ["intent", "create", "--text-file", path])
+      ).rejects.toThrow(/Intent text must be non-empty/);
+
+      const queue = JSON.parse(
+        await readFile(join(root, "state/intent_queue.json"), "utf8")
+      );
+      expect(queue.intents).toEqual([]);
+    });
+  });
+});
+
 describe("implicit active-context defaults", () => {
   test("plan-check without --deployment uses active deployment", async () => {
     await withWorkspace(async (root) => {
