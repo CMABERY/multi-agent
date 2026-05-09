@@ -1,12 +1,12 @@
 # Project Overview And Capability Insight
 
-This document explains what MAW is, what it can do, where its boundaries are, and how the current codebase is organized. It is written for operators, implementers, and reviewers who need a product-level view before using the command reference.
+This document is the depth view behind the README. It takes each concept the README names and unpacks the why, the mechanism, the boundary, and the module that implements it. It is written for operators, implementers, and reviewers who need to understand MAW's design choices before relying on the command reference.
 
-For command syntax, use [operator-manual.md](operator-manual.md). For scenario practice, use [operational-demonstrations.md](operational-demonstrations.md).
+For the conceptual front door, see [../README.md](../README.md). For command syntax, use [operator-manual.md](operator-manual.md). For scenario practice, use [operational-demonstrations.md](operational-demonstrations.md).
 
 ## Product Identity
 
-MAW is a local, file-backed multi-agent workflow runtime, exposed as a state-aware operator console over that workflow ledger. It is implemented as a TypeScript Node CLI and stores workflow evidence in local JSON and Markdown files.
+MAW is a local, file-backed multi-agent workflow runtime exposed as a state-aware operator console over that workflow ledger. It is implemented as a TypeScript Node CLI and stores workflow evidence in local JSON and Markdown files.
 
 The product goal is not to make agentic work invisible. The goal is to make it inspectable:
 
@@ -21,18 +21,52 @@ The product goal is not to make agentic work invisible. The goal is to make it i
 
 MAW treats workflow state as an audit surface. The operator console layer adds an orientation and recovery surface on top: status, next, doctor, transition guidance, recovery packets, scaffold paths, and local operator-experience metrics. The operator should be able to inspect what happened, why it happened, what evidence supports the result, and what to do next without opening JSON files.
 
-## Current Repository Baseline
+Current release baseline: 8348a44 fix: validate risk level and intent text in createIntent.
 
-- Package: maw 0.1.0
-- Runtime: Node.js 20 or newer
-- Language: TypeScript with ECMAScript modules
-- Entry point: src/index.ts
-- CLI surface: src/cli.ts
-- Built target: dist/src/index.js
-- Current release baseline: 8348a44 fix: validate risk level and intent text in createIntent
-- Main reference docs: README.md, docs/operator-manual.md, docs/operational-demonstrations.md
+## Two-Layer Architecture
 
-The repository is source-focused. state/, artifacts/, dist/, and node_modules/ are intentionally ignored and should not be treated as product source.
+MAW is one product organized as two cooperating layers over a single workspace.
+
+### The Workflow Ledger
+
+The ledger is the substrate. It turns intent into evidence, stage by stage, and each artifact produced at one step is the audit surface for the next:
+
+- intent capture in state/intent_queue.json
+- orchestration into a prompt contract, task graph, deployment plan, and decision records
+- deterministic plan-check and context-check before approval
+- explicit human approval in state/approvals.json
+- approved deployment execution across dry_run, model_agent, and local_command executors
+- structured-evidence reviews and load-bearing consensus
+- workflow intelligence yield scoring
+- retrospectives and learning memory
+- agent performance memory
+- Markdown reporting for handoff
+
+Every stage is durable. There is no pass-by-label and no hidden process memory.
+
+### The Operator Console
+
+The console is the surface. It sits on top of the ledger and answers four questions without forcing the operator into JSON:
+
+- Where am I? -> status
+- What changed and what is next? -> transition guidance plus next
+- What is wrong? -> doctor
+- How do I recover? -> structured recovery packets
+
+It also defines the only sanctioned ways to extend MAW (scaffold agent, reviewer, protocol, command), the only sugar chain that automates deterministic stages (maw plan), and the friction-measurement layer (operator metrics).
+
+The console reads the ledger but never repairs it autonomously. status, next, doctor, and the active-context resolvers are all read-only.
+
+### Why Two Layers
+
+Splitting these responsibilities lets each layer be reasoned about independently:
+
+- The ledger's correctness is checkable against persisted state.
+- The console's behavior is checkable as deterministic functions over that state.
+- Failures in one do not poison the other: doctor and status remain useful even when an in-flight deployment is stuck.
+- Operator-console features can ship without touching the ledger contract.
+
+The README presents the same split as a one-line claim per layer. Everything below is the depth that claim points at.
 
 ## Operating Model
 
@@ -122,9 +156,22 @@ The operator console layer answers four questions without inspecting JSON: where
 - next prints exactly one recommended command. The optional --reason form adds the same one-line reason status would print.
 - doctor diagnoses setup, environment, and workflow issues without modifying state. It surfaces missing API keys, reviewer coverage gaps, local-command policy issues, action-required chat, current high-severity plan-check issues, and failed context checks.
 - Successful human-readable commands append transition guidance: workflow state, next command, and reason. JSON outputs and the report and bootstrap payloads remain untouched.
-- Implicit active context: --deployment, --intent, and --task default to the operator state interpreter's active_*_id when omitted. Resolution applies to orchestrate, plan-check, run, approval record, score, retrospective, performance update, context-check, review record, and consensus compute. If no active context exists, MAW prints a recovery packet pointing at maw status; explicit IDs always win.
 
-Insight: orientation is a deterministic read over current state. operatorState is read-only and never calls validateWorkspace. Implicit context shares the same interpreter that drives status, so the two views always agree.
+Insight: orientation is a deterministic read over current state. operatorState is read-only and never calls validateWorkspace.
+
+### Implicit Active Context
+
+When a deployment, intent, or task is active in operator state, --deployment, --intent, and --task become optional on the ten state-targeting commands. The CLI resolves the omitted flag through resolveActiveDeploymentId, resolveActiveIntentId, or resolveActiveTaskId, all of which read the same OperatorState the operator console renders.
+
+Resolution rules:
+
+- Explicit IDs always win. Passing --deployment DP-002 overrides the active deployment.
+- The active context comes from the same interpreter that drives status. The two views always agree.
+- If no active context exists for the requested kind, MAW emits a recovery packet pointing at maw status and refuses to run the command.
+
+Resolution applies to: orchestrate, plan-check, run, approval record, score, retrospective, performance update, context-check, review record, and consensus compute.
+
+Insight: implicit context is a UX shortcut, not a guess. The resolver delegates to operatorState and never invents an ID. The recovery packet on missing context keeps "no active context" from ever silently picking the wrong target.
 
 ### Auto-Plan Chain
 
@@ -303,14 +350,14 @@ The most important operator boundary is approval. A plan can exist without being
 
 ## Documentation Model
 
-The documentation set is split by purpose:
+The documentation set is split by depth and audience. Each document avoids duplicating the others:
 
-- README.md is the front door and quick orientation.
-- docs/project-overview-and-capability-insight.md is the product and capability view.
-- docs/operator-manual.md is the command reference.
-- docs/operational-demonstrations.md is the scenario playbook.
+- README.md is the front door. It states each MAW concept in one sentence and points the reader here for depth.
+- docs/project-overview-and-capability-insight.md (this document) is the depth view. It takes each README concept and unpacks the why, the bound, and the implementing module.
+- docs/operator-manual.md is the command reference. It documents per-command inputs, reads, writes, model behavior, recovery packets, and operator checklists.
+- docs/operational-demonstrations.md is the scenario playbook. It walks through twenty-five demos covering normal operation, failures, verification, recovery, extension, and handoff.
 
-This split avoids one document trying to serve every reader.
+This split avoids one document trying to serve every reader. Quick orientation lives in the README. Design rationale lives here. Command syntax lives in the manual. Worked scenarios live in the demonstration suite.
 
 ## Current Maturity
 
