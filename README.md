@@ -1,17 +1,25 @@
 # MAW: Multi-Agent Workflow Runtime
 
-MAW is a local, file-backed TypeScript Node CLI for auditable multi-agent workflows. It turns operator intent into structured plans, approval gates, task execution records, review evidence, consensus, scores, retrospectives, performance memory, and handoff reports.
+MAW runs auditable multi-agent workflows from a local TypeScript Node CLI and exposes them through a state-aware operator console. Intent becomes a deployment plan, plans become approved deployments, deployments produce artifacts, artifacts are verified by structured-evidence reviews and load-bearing consensus, and the entire trace lives as inspectable JSON and Markdown in the working directory.
 
-MAW is also a state-aware operator console. Beyond running the workflow, it tells the operator where they are, what is blocked or stale, what command to run next, how to recover from expected failures, and how to extend the system safely. It records local operator-experience metrics so friction in the console itself is inspectable.
+What makes MAW distinctive:
 
-The project is intentionally local-first. Commands operate on the current working directory, source remains in git, and live workflow data stays in ignored runtime folders.
+- Honest verification. Review-required deliverables are accepted only when load-bearing consensus passes with cited evidence; rubber-stamp passes do not count.
+- An explicit approval gate. Plans can exist without being safe to execute; approval records the human decision and is never auto-skipped.
+- A state-aware operator console. status, next, and doctor orient the operator from current state; successful commands emit transition guidance; recoverable failures emit structured repair packets with Error, Why, State Safety, Corrective Command, and Then.
+- Implicit active context. Once a deployment, intent, or task is active, --deployment, --intent, and --task default to it. Explicit IDs still override.
+- Sanctioned extension. scaffold agent, scaffold reviewer, scaffold protocol, and scaffold command extend the registry and protocol library without hand-editing JSON or generating CLI source.
+- Sugar chains, not auto-pilots. maw plan chains intent create, orchestrate, and plan-check in one shot, then stops at the approval gate.
+- Local-first by contract. No external telemetry. state/operator_experience.json records normalized command families and outcomes, never raw user text. State stays in ignored runtime folders.
+
+Commands operate on the current working directory, source remains in git, and live workflow data stays in ignored runtime folders.
 
 ## Current Repository State
 
 - Repository path: C:\Multi-Agent
 - Branch: master
 - Remote: origin https://github.com/CMABERY/multi-agent
-- Current verified release HEAD: 2d7017f feat: add state-aware operator console
+- Current verified release HEAD: 8348a44 fix: validate risk level and intent text in createIntent
 - Package: maw 0.1.0
 - Runtime: Node.js 20 or newer
 - Language: TypeScript with ECMAScript modules
@@ -109,7 +117,10 @@ Operator console capabilities:
 - doctor diagnostics that flag setup, environment, and workflow issues without modifying state.
 - Transition guidance appended to successful human-readable commands so operators see workflow state and next command without inspecting JSON.
 - Structured recovery packets for known recoverable failures, with Error, Why, State Safety, Corrective Command, and Then.
+- Implicit active-context defaults for --deployment, --intent, and --task across orchestrate, plan-check, run, approval record, score, retrospective, performance update, context-check, review record, and consensus compute. Explicit IDs still override.
+- maw plan, a sugar command that chains intent create, orchestrate, and plan-check in one call and stops at the approval gate.
 - Sanctioned scaffold paths for agents, reviewers, protocols, and local-command execution profiles, with rollback guidance and refusal of unsafe inputs.
+- Input validation that refuses invalid risk levels, empty intent text, and re-orchestration of intents that already have a deployment, before any state is written.
 - Local operator-experience metrics that record normalized command families, outcomes, and friction signals without storing raw user text.
 - Bootstrap readiness packets with continuity, counter-context, posture, and architecture metadata. Bootstrap remains readiness and governance, not a dashboard.
 
@@ -153,11 +164,12 @@ Core runtime modules:
 
 Operator console modules:
 
-- src/operatorState.ts: deterministic workflow-state interpreter; read-only.
+- src/operatorState.ts: deterministic workflow-state interpreter and active-context resolvers; read-only.
 - src/operatorDoctor.ts: read-only diagnostic findings and repair guidance.
 - src/operatorGuidance.ts: transition guidance renderer for successful commands.
 - src/operatorRecovery.ts: structured recovery packets for known recoverable failures.
 - src/scaffold.ts: sanctioned extension scaffolds for agents, reviewers, protocols, and local-command profiles.
+- src/autoPlan.ts: maw plan chain over intent create, orchestrate, and plan-check; stops at the approval gate.
 - src/operatorExperience.ts: local operator-experience metrics, command-family classification, and report rendering.
 - src/operatorEntrypoint.ts: CLI wrapper that classifies the invocation, preserves recovery behavior, and records best-effort metrics.
 
@@ -190,6 +202,13 @@ Commands that do not require a model key:
 - doctor
 - scaffold agent, scaffold reviewer, scaffold protocol, scaffold command
 - operator metrics
+
+Commands that may call a model when invoked:
+
+- orchestrate
+- plan (calls orchestrate as part of the chain; plan-check is deterministic)
+- run when any assignment uses model_agent
+- automatic structured reviews spawned by run
 
 Local command execution requires:
 
@@ -235,7 +254,7 @@ Runtime status check:
 
 ## Current Release Baseline
 
-Current release: 2d7017f feat: add state-aware operator console.
+Current release: 8348a44 fix: validate risk level and intent text in createIntent.
 
 Released in this baseline:
 
@@ -245,6 +264,10 @@ Released in this baseline:
 - Sanctioned scaffold paths for agent, reviewer, protocol, and local-command profile extensions.
 - Local operator-experience metrics with normalized command families and no raw user text.
 - Schema and workspace updates to seed state/operator_experience.json on init.
+- Implicit active-context defaults for --deployment, --intent, and --task on the ten state-targeting commands.
+- maw plan sugar command that chains intent create, orchestrate, and plan-check; stops at approval.
+- Orchestrator guard that refuses any intent already holding a deployment or no longer in status new, even after a partial-write window.
+- createIntent input validation that refuses invalid --risk values and empty --text before any state is written.
 
 Earlier completed work still in effect:
 

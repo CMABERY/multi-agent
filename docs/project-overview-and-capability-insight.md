@@ -29,7 +29,7 @@ MAW treats workflow state as an audit surface. The operator console layer adds a
 - Entry point: src/index.ts
 - CLI surface: src/cli.ts
 - Built target: dist/src/index.js
-- Current release baseline: 2d7017f feat: add state-aware operator console
+- Current release baseline: 8348a44 fix: validate risk level and intent text in createIntent
 - Main reference docs: README.md, docs/operator-manual.md, docs/operational-demonstrations.md
 
 The repository is source-focused. state/, artifacts/, dist/, and node_modules/ are intentionally ignored and should not be treated as product source.
@@ -122,8 +122,20 @@ The operator console layer answers four questions without inspecting JSON: where
 - next prints exactly one recommended command. The optional --reason form adds the same one-line reason status would print.
 - doctor diagnoses setup, environment, and workflow issues without modifying state. It surfaces missing API keys, reviewer coverage gaps, local-command policy issues, action-required chat, current high-severity plan-check issues, and failed context checks.
 - Successful human-readable commands append transition guidance: workflow state, next command, and reason. JSON outputs and the report and bootstrap payloads remain untouched.
+- Implicit active context: --deployment, --intent, and --task default to the operator state interpreter's active_*_id when omitted. Resolution applies to orchestrate, plan-check, run, approval record, score, retrospective, performance update, context-check, review record, and consensus compute. If no active context exists, MAW prints a recovery packet pointing at maw status; explicit IDs always win.
 
-Insight: orientation is a deterministic read over current state. operatorState is read-only and never calls validateWorkspace.
+Insight: orientation is a deterministic read over current state. operatorState is read-only and never calls validateWorkspace. Implicit context shares the same interpreter that drives status, so the two views always agree.
+
+### Auto-Plan Chain
+
+maw plan is a sugar command that runs intent create, orchestrate, and plan-check in one call and stops at the approval gate. Approval, run, score, retrospective, and performance update remain explicit operator actions; the chain never auto-skips approval.
+
+- The chain is intentionally narrow. It covers only the deterministic and orchestration stages where automation is safe.
+- createIntent is the first step, so its input validation (non-empty --text, --risk in low/medium/high) refuses bad input before any state is written.
+- If orchestrate fails mid-chain, the intent stays in status new with no deployment. The operator can re-run maw orchestrate (which now defaults to the active intent) to retry without recreating the intent.
+- If plan-check returns high-severity issues, plan exits 1 and prints the issues. The deployment is still persisted so doctor and orchestrate can repair it.
+
+Insight: chaining lives one layer above the workflow primitives. It composes existing functions rather than reshaping the contract, and approval remains the immovable gate.
 
 ### Structured Recovery
 
@@ -233,11 +245,12 @@ Insight: bootstrap is readiness support, not full source understanding. It tells
 
 ### Operator Console
 
-- src/operatorState.ts: workflow-state interpreter; reads workspace stores and returns workflow state, active objects, readiness flags, blockers, stale and risky conditions, and a single recommended next command.
+- src/operatorState.ts: workflow-state interpreter; reads workspace stores and returns workflow state, active objects, readiness flags, blockers, stale and risky conditions, and a single recommended next command. Also exports resolveActiveDeploymentId, resolveActiveIntentId, and resolveActiveTaskId for implicit-context defaults.
 - src/operatorDoctor.ts: read-only diagnostics that produce findings with repair guidance.
 - src/operatorGuidance.ts: transition guidance renderer for successful human-readable commands.
 - src/operatorRecovery.ts: structured recovery packet matcher and renderer for known recoverable failures.
 - src/scaffold.ts: sanctioned extension scaffolds for agents, reviewers, protocols, and local-command profiles.
+- src/autoPlan.ts: maw plan chain over intent create, orchestrate, and plan-check; stops at the approval gate. Accepts an optional ModelClient for tests.
 - src/operatorExperience.ts: local friction metrics, command-family classification, event log, derived metrics, and report rendering.
 - src/operatorEntrypoint.ts: CLI wrapper that classifies the invocation, preserves recovery packet behavior, and records best-effort metrics.
 
@@ -282,6 +295,9 @@ MAW is conservative about side effects:
 - Operator-experience metrics are local only and do not store raw argv or free-form user text.
 - Pre-init help and invalid command invocations do not create state or the metrics file.
 - Scaffold mutations are limited to state/agent_registry.json or protocols/<safe-name>.md, and scaffold command does not generate MAW CLI source.
+- createIntent validates --text and --risk before any disk write; invalid values refuse with a recovery packet and leave state/intent_queue.json untouched.
+- orchestrate refuses any intent that already has a deployment in state/deployment_plan.json or whose status is no longer new, regardless of how that state arose. The deployment-plan check runs first so partial-write windows still refuse.
+- maw plan never auto-skips approval. Approval, run, score, retrospective, and performance update remain explicit operator actions.
 
 The most important operator boundary is approval. A plan can exist without being safe to execute. Approval records the human decision to proceed or reject.
 
@@ -309,7 +325,10 @@ Current strengths:
 - Bootstrap readiness with posture and architecture metadata.
 - Repository hygiene enforcement for grave accent removal.
 - State-aware operator console with status, next, doctor, transition guidance, and structured recovery packets.
+- Implicit active-deployment, intent, and task context across the ten state-targeting commands.
+- maw plan sugar chain that stops at the approval gate.
 - Sanctioned scaffold paths for agents, reviewers, protocols, and local-command profiles.
+- Input validation that refuses invalid risk levels, empty intent text, and re-orchestration of intents that already have a deployment, before any state is written.
 - Local operator-experience metrics that surface friction signals without persisting raw user text.
 
 Current constraints:
@@ -333,8 +352,8 @@ MAW is most useful when treated as a disciplined workflow ledger plus a state-aw
 - Use status to orient before acting.
 - Use next when you want a single recommended command without scanning state.
 - Use doctor before deciding to repair or escalate.
-- Use intent create before planning.
-- Treat plan-check as the approval precondition.
+- Use maw plan when the work is well-scoped and you want intent, orchestration, and plan-check in one shot; review the resulting plan before recording approval.
+- Use intent create when you want to think between stages; orchestrate, plan-check, and approval record will default --intent and --deployment to the active context.
 - Treat approval scope as the execution contract.
 - Treat artifacts as the evidence surface.
 - Treat consensus as the verification gate.
