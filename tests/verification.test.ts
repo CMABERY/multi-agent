@@ -93,6 +93,18 @@ async function seedDeployment(
       }
     ]
   });
+  await saveJson(root, "state/plan_checks.json", {
+    plan_checks: [
+      {
+        check_id: "PC-001",
+        deployment_id: "DP-001",
+        status: "pass",
+        issues: [],
+        created_at: "2026-05-08T00:00:01.000Z",
+        updated_at: "2026-05-08T00:00:01.000Z"
+      }
+    ]
+  });
 }
 
 function review(overrides: Partial<StructuredReview> = {}): StructuredReview {
@@ -153,6 +165,12 @@ async function seedConsensusTask(root: string): Promise<void> {
   });
 }
 
+async function makeConsensusTaskLowRisk(root: string): Promise<void> {
+  const board = await loadJson(root, "state/task_board.json");
+  board.tasks[0].risk_level = "low";
+  await saveJson(root, "state/task_board.json", board);
+}
+
 describe("honest verification", () => {
   test("malformed reviewer JSON abstains without failing the runner", async () => {
     await withWorkspace(async (root) => {
@@ -201,7 +219,7 @@ describe("honest verification", () => {
               {
                 criterion: "Brief includes the required evidence claim",
                 verdict: "pass",
-                citations: [{ artifact_id: "ART-001", line_start: 8, line_end: 15 }],
+                citations: [{ artifact_id: "ART-001", line_start: 8, line_end: 11 }],
                 rationale: "The second reviewer cites an overlapping span.",
                 confidence: 0.85
               }
@@ -232,7 +250,7 @@ describe("honest verification", () => {
               {
                 criterion: "Brief includes the required evidence claim",
                 verdict: "pass",
-                citations: [{ artifact_id: "ART-001", line_start: 8, line_end: 12 }],
+                citations: [{ artifact_id: "ART-001", line_start: 8, line_end: 11 }],
                 rationale: "Overlaps with the other reviewers.",
                 confidence: 0.86
               }
@@ -246,7 +264,7 @@ describe("honest verification", () => {
               {
                 criterion: "Brief includes the required evidence claim",
                 verdict: "pass",
-                citations: [{ artifact_id: "ART-001", line_start: 9, line_end: 13 }],
+                citations: [{ artifact_id: "ART-001", line_start: 9, line_end: 11 }],
                 rationale: "The evidence is internally consistent.",
                 confidence: 0.88
               }
@@ -296,6 +314,117 @@ describe("honest verification", () => {
       expect(consensus.per_criterion[0]!.verdict).toBe("fail");
       expect(consensus.overall_verdict).toBe("fail");
       expect(score.verified_useful_outputs).toBe(0);
+    });
+  });
+
+  test("review citations to missing artifacts are treated as malformed abstentions", async () => {
+    await withWorkspace(async (root) => {
+      await seedConsensusTask(root);
+      await makeConsensusTaskLowRisk(root);
+      await saveJson(root, "state/review_log.json", {
+        reviews: [
+          review({
+            per_criterion: [
+              {
+                criterion: "Brief includes the required evidence claim",
+                verdict: "pass",
+                citations: [{ artifact_id: "ART-999", line_start: 1, line_end: 1 }],
+                rationale: "This cites a missing artifact.",
+                confidence: 0.9
+              }
+            ]
+          })
+        ]
+      });
+
+      const consensus = await computeConsensus(root, { taskId: "T-001" });
+      const log = await loadJson(root, "state/review_log.json");
+
+      expect(consensus.overall_verdict).toBe("insufficient");
+      expect(consensus.per_criterion[0]).toMatchObject({
+        pass_count: 0,
+        abstain_count: 1,
+        verdict: "unverifiable"
+      });
+      expect(log.reviews[0]).toMatchObject({
+        status: "abstain",
+        malformed: true,
+        per_criterion: []
+      });
+      expect(log.reviews[0].free_form_assessment).toContain("Citation ART-999 does not exist");
+    });
+  });
+
+  test("review citations must point to deliverable artifact lines for the reviewed task", async () => {
+    await withWorkspace(async (root) => {
+      await seedConsensusTask(root);
+      await makeConsensusTaskLowRisk(root);
+      await saveText(root, "artifacts/runs/T-001/delegation_packet.md", "packet line\n");
+      await addArtifact(root, {
+        taskId: "T-001",
+        path: "artifacts/runs/T-001/delegation_packet.md",
+        type: "delegation_packet",
+        description: "Delegation packet"
+      });
+      await saveJson(root, "state/review_log.json", {
+        reviews: [
+          review({
+            per_criterion: [
+              {
+                criterion: "Brief includes the required evidence claim",
+                verdict: "pass",
+                citations: [{ artifact_id: "ART-002", line_start: 1, line_end: 1 }],
+                rationale: "This cites a non-deliverable artifact.",
+                confidence: 0.9
+              }
+            ]
+          })
+        ]
+      });
+
+      const consensus = await computeConsensus(root, { taskId: "T-001" });
+      const log = await loadJson(root, "state/review_log.json");
+
+      expect(consensus.overall_verdict).toBe("insufficient");
+      expect(log.reviews[0]).toMatchObject({
+        status: "abstain",
+        malformed: true,
+        per_criterion: []
+      });
+      expect(log.reviews[0].free_form_assessment).toContain("is not a deliverable artifact");
+    });
+  });
+
+  test("review citations with out-of-range lines are treated as malformed abstentions", async () => {
+    await withWorkspace(async (root) => {
+      await seedConsensusTask(root);
+      await makeConsensusTaskLowRisk(root);
+      await saveJson(root, "state/review_log.json", {
+        reviews: [
+          review({
+            per_criterion: [
+              {
+                criterion: "Brief includes the required evidence claim",
+                verdict: "pass",
+                citations: [{ artifact_id: "ART-001", line_start: 12, line_end: 12 }],
+                rationale: "This cites beyond the deliverable.",
+                confidence: 0.9
+              }
+            ]
+          })
+        ]
+      });
+
+      const consensus = await computeConsensus(root, { taskId: "T-001" });
+      const log = await loadJson(root, "state/review_log.json");
+
+      expect(consensus.overall_verdict).toBe("insufficient");
+      expect(log.reviews[0]).toMatchObject({
+        status: "abstain",
+        malformed: true,
+        per_criterion: []
+      });
+      expect(log.reviews[0].free_form_assessment).toContain("outside artifact ART-001 line count 11");
     });
   });
 
@@ -635,7 +764,7 @@ describe("honest verification", () => {
               {
                 criterion: "Brief includes the required evidence claim",
                 verdict: "pass",
-                citations: [{ artifact_id: "ART-001", line_start: 8, line_end: 12 }],
+                citations: [{ artifact_id: "ART-001", line_start: 8, line_end: 11 }],
                 rationale: "Latest skeptical review verifies the corrected evidence claim.",
                 confidence: 0.88
               }

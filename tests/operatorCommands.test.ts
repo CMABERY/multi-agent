@@ -700,6 +700,7 @@ describe("implicit active-context defaults", () => {
           { owner_agent_id: "researcher_1", owner_role: "Research Agent", executor: "model_agent" }
         ]
       });
+      await runCli(root, ["plan-check"]);
 
       const output = await runCli(root, [
         "approval",

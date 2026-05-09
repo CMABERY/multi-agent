@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { OpenAIResponsesClient } from "../src/openai.js";
+import { runPlanCheck } from "../src/planCheck.js";
 import { runDeployment } from "../src/runner.js";
 import type { ModelConfig } from "../src/schemas.js";
 import { loadJson, saveJson } from "../src/storage.js";
@@ -82,6 +83,29 @@ describe("OpenAIResponsesClient", () => {
       status: "completed",
       usage: { input_tokens: 10, output_tokens: 20 }
     });
+  });
+
+  test("sends hosted web search tools when requested", async () => {
+    stubResponse({
+      status: "completed",
+      output_text: "searched"
+    });
+
+    const request = {
+      model: "test-model",
+      instructions: "follow",
+      input: "prompt",
+      tools: [{ type: "web_search" }],
+      toolChoice: "auto" as const,
+      include: ["web_search_call.action.sources"]
+    };
+    await new OpenAIResponsesClient(config()).createResponse(request);
+
+    const fetchMock = vi.mocked(fetch);
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(body.tools).toEqual([{ type: "web_search" }]);
+    expect(body.tool_choice).toBe("auto");
+    expect(body.include).toEqual(["web_search_call.action.sources"]);
   });
 
   test("marks responses truncated when top-level status is incomplete", async () => {
@@ -255,6 +279,7 @@ describe("OpenAIResponsesClient", () => {
         })
       };
 
+      await runPlanCheck(root, { deploymentId: "DP-001" });
       await runDeployment(root, { deploymentId: "DP-001", modelClient });
 
       const log = await loadJson(root, "state/review_log.json");
@@ -352,6 +377,7 @@ describe("OpenAIResponsesClient", () => {
         })
       };
 
+      await runPlanCheck(root, { deploymentId: "DP-001" });
       await runDeployment(root, { deploymentId: "DP-001", modelClient });
 
       const log = await loadJson(root, "state/review_log.json");

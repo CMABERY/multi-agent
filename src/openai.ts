@@ -6,7 +6,17 @@ export interface ModelRequest {
   instructions: string;
   input: string;
   maxOutputTokens?: number;
+  tools?: ModelTool[];
+  toolChoice?: ModelToolChoice;
+  include?: string[];
 }
+
+export interface ModelTool {
+  type: string;
+  [key: string]: unknown;
+}
+
+export type ModelToolChoice = "auto" | "required" | "none" | Record<string, unknown>;
 
 export interface ModelUsage {
   input_tokens: number;
@@ -34,18 +44,23 @@ export class OpenAIResponsesClient implements ModelClient {
       throw new Error("Missing OpenAI API key environment variable: " + (this.config.api_key_env));
     }
 
+    const body: Record<string, unknown> = {
+      model: request.model,
+      instructions: request.instructions,
+      input: request.input,
+      max_output_tokens: request.maxOutputTokens ?? this.config.max_output_tokens
+    };
+    if (request.tools && request.tools.length > 0) body.tools = request.tools;
+    if (request.toolChoice) body.tool_choice = request.toolChoice;
+    if (request.include && request.include.length > 0) body.include = request.include;
+
     const response = await fetch("" + (this.config.base_url) + "/responses", {
       method: "POST",
       headers: {
         Authorization: "Bearer " + (apiKey),
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({
-        model: request.model,
-        instructions: request.instructions,
-        input: request.input,
-        max_output_tokens: request.maxOutputTokens ?? this.config.max_output_tokens
-      })
+      body: JSON.stringify(body)
     });
 
     if (!response.ok) {

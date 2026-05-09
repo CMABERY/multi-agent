@@ -72,6 +72,21 @@ export async function buildRecoveryPacket(root: string, error: unknown): Promise
     );
   }
 
+  match = /^Deployment (DP-\d{3,}) requires a current passing plan-check before (approval|execution)\. Run maw plan-check --deployment \1\.$/.exec(message);
+  if (match?.[1] && match?.[2]) {
+    const deploymentId = match[1];
+    const gate = match[2];
+    return packet(
+      message,
+      gate === "approval"
+        ? deploymentId + " must pass deterministic plan review before approval is recorded."
+        : deploymentId + " must pass deterministic plan review before task execution starts.",
+      "safe; no approval or execution state was advanced.",
+      "maw plan-check --deployment " + deploymentId,
+      gate === "approval" ? approvalCommand(deploymentId) : "maw run --deployment " + deploymentId
+    );
+  }
+
   match = /^Deployment (DP-\d{3,}) is not approved\. Current status: .+$/.exec(message);
   if (match?.[1]) {
     const deploymentId = match[1];

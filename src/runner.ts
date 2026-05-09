@@ -5,6 +5,7 @@ import { z } from "zod";
 import { addArtifact, ensureRunDir } from "./artifacts.js";
 import { hasApprovedDeployment } from "./approvals.js";
 import { computeConsensus } from "./consensus.js";
+import { runContextCheck } from "./contextCheck.js";
 import { nextId } from "./ids.js";
 import { isDeliverableTask, isReviewOrSynthesisTask } from "./intelligenceCommon.js";
 import { incrementMetric } from "./metrics.js";
@@ -13,8 +14,17 @@ import {
   estimateModelCostUsd,
   loadModelConfig,
   type ModelClient,
+  type ModelTool,
   selectModel
 } from "./openai.js";
+import {
+  classifyCommandAuthorization,
+  classifyToolAuthorization,
+  evaluateAuthorization,
+  recordPermissionAudit,
+  type PolicyDecision
+} from "./permissionPolicy.js";
+import { beginTransaction, markTransaction } from "./transactions.js";
 import { buildReviewerInstructions } from "./reviewerPrompts.js";
 import { recordReview } from "./reviews.js";
 import {
@@ -31,6 +41,7 @@ import {
   type ReviewerPersona,
   type Task
 } from "./schemas.js";
+import { requireCurrentPassingPlanCheck } from "./planCheck.js";
 import { loadJson, nowIso, saveJson, saveText } from "./storage.js";
 
 class HaltError extends Error {
@@ -62,6 +73,69 @@ const ReviewerOutputSchema = z.object({
 });
 
 const outputArtifactTypes = new Set(["model_output", "command_output"]);
+const WEB_SEARCH_SOURCES_INCLUDE = "web_search_call.action.sources";
+
+async function authorizeModelTools(
+  root: string,
+  agent: Agent,
+  task: Task,
+  deploymentId: string | undefined
+): Promise<{
+  tools?: ModelTool[];
+  toolChoice?: "auto";
+  include?: string[];
+  decisions: Array<{ tool: string; decision: PolicyDecision }>;
+}> {
+  const decisions: Array<{ tool: string; decision: PolicyDecision }> = [];
+  if (!agent.allowed_tools.includes("web_search")) return { decisions };
+
+  const dependencyArtifacts = await collectDependencyArtifacts(root, task);
+  const signals = {
+    dependencyArtifactCount: dependencyArtifacts.length,
+    workspaceContextPathCount: task.input_context.length
+  };
+  const request = classifyToolAuthorization({
+    toolType: "web_search",
+    agent,
+    task,
+    signals
+  });
+  if (!request) return { decisions };
+  const decision = evaluateAuthorization(request);
+  await recordPermissionAudit(root, { deploymentId, request, decision });
+  decisions.push({ tool: "web_search", decision });
+  if (decision.decision === "deny") {
+    await addChatDefect(
+      root,
+      task.task_id,
+      "Hosted web_search denied for " +
+        task.task_id +
+        "/" +
+        agent.agent_id +
+        " — missing grants: " +
+        decision.missing_grants.join(", ") +
+        ". Tool was dropped from the model request; plan-check should have caught this earlier."
+    );
+    return { decisions };
+  }
+  return {
+    tools: [{ type: "web_search" }],
+    toolChoice: "auto",
+    include: [WEB_SEARCH_SOURCES_INCLUDE],
+    decisions
+  };
+}
+
+function buildModelAgentInstructions(agent: Agent, tools: ModelTool[] | undefined): string {
+  if (!tools || tools.length === 0) {
+    return "You are " + (agent.role) + ". Complete the assigned task using only the scoped context packet.";
+  }
+  return (
+    "You are " +
+    (agent.role) +
+    ". Complete the assigned task using the scoped context packet and the provided hosted tools. Use hosted tools only when needed, and cite sources returned by tool-backed research."
+  );
+}
 
 export async function runDeployment(
   root: string,
@@ -82,6 +156,7 @@ export async function runDeployment(
   if (plan.status !== "approved" && !input.rerun) {
     throw new Error("Deployment " + (plan.deployment_id) + " is not approved. Current status: " + (plan.status));
   }
+  await requireCurrentPassingPlanCheck(root, plan, "execution");
 
   const board = TaskBoardSchema.parse(await loadJson(root, "state/task_board.json"));
   const registry = AgentRegistrySchema.parse(await loadJson(root, "state/agent_registry.json"));
@@ -108,6 +183,18 @@ export async function runDeployment(
     }
 
     try {
+      const contextCheck = await runContextCheck(root, { taskId: task.task_id });
+      if (contextCheck.status === "fail") {
+        const issueCodes = contextCheck.issues.map((issue) => issue.code).join(", ");
+        const message = "Context check failed for " + (task.task_id) + ": " + (issueCodes || "unknown issue");
+        await markTask(board, root, task, "blocked", "Context check failed: " + (issueCodes || "unknown issue"));
+        await addChatBlocker(root, task.task_id, message);
+        failed.push(task.task_id);
+        plan.status = "failed";
+        plan.updated_at = nowIso();
+        await saveJson(root, "state/deployment_plan.json", plans);
+        continue;
+      }
       await markTask(board, root, task, "running");
       const runDir = await ensureRunDir(root, task.task_id);
       const packet = await buildDelegationPacket(root, task, assignment, agent);
@@ -116,9 +203,9 @@ export async function runDeployment(
       if (assignment.executor === "dry_run") {
         await runDryRun(root, task, runDir);
       } else if (assignment.executor === "model_agent") {
-        await runModelAgent(root, task, agent, runDir, input.modelClient);
+        await runModelAgent(root, task, agent, runDir, plan.deployment_id, input.modelClient);
       } else {
-        await runLocalCommand(root, task, agent, runDir, Boolean(input.execute));
+        await runLocalCommand(root, task, agent, runDir, Boolean(input.execute), plan.deployment_id);
       }
       await markTask(board, root, task, "completed");
       if (task.review_required && isDeliverableTask(task)) {
@@ -227,22 +314,36 @@ async function runModelAgent(
   task: Task,
   agent: Agent,
   runDir: string,
+  deploymentId: string | undefined,
   modelClient?: ModelClient
 ): Promise<void> {
   const config = await loadModelConfig(root);
   const client = modelClient ?? (await createDefaultModelClient(root));
   const contextPacket = await buildScopedContextPacket(root, task);
   const model = selectModel(config, agent.model_tier ?? task.model_tier, agent.model);
+  const toolRequest = await authorizeModelTools(root, agent, task, deploymentId);
   await saveJson(root, "" + (runDir) + "/model_request_summary.json", {
     model,
     agent_id: agent.agent_id,
-    task_id: task.task_id
+    task_id: task.task_id,
+    allowed_tools: agent.allowed_tools,
+    enabled_tools: toolRequest.tools?.map((tool) => tool.type) ?? [],
+    policy_decisions: toolRequest.decisions.map((entry) => ({
+      tool: entry.tool,
+      decision: entry.decision.decision,
+      required_grants: entry.decision.required_grants,
+      missing_grants: entry.decision.missing_grants,
+      reason: entry.decision.reason
+    }))
   });
   const output = await client.createResponse({
     model,
-    instructions: "You are " + (agent.role) + ". Complete the assigned task using only the scoped context packet.",
+    instructions: buildModelAgentInstructions(agent, toolRequest.tools),
     input: contextPacket,
-    maxOutputTokens: config.max_output_tokens
+    maxOutputTokens: config.max_output_tokens,
+    tools: toolRequest.tools,
+    toolChoice: toolRequest.toolChoice,
+    include: toolRequest.include
   });
   const responseText = normalizeModelOutputForAcceptance(task, output.text);
   await saveText(root, "" + (runDir) + "/response_output.md", responseText);
@@ -278,7 +379,8 @@ async function runLocalCommand(
   task: Task,
   agent: Agent,
   runDir: string,
-  execute: boolean
+  execute: boolean,
+  deploymentId: string | undefined
 ): Promise<void> {
   if (!execute) {
     throw new Error("Local command task " + (task.task_id) + " requires --execute.");
@@ -289,20 +391,76 @@ async function runLocalCommand(
   if (!agent.command_allowlist.includes(task.command.command)) {
     throw new Error("Command is not allowlisted for " + (agent.agent_id) + ": " + (task.command.command));
   }
-  const result = await spawnCommand(task.command.command, task.command.args);
-  await saveText(root, "" + (runDir) + "/command_output.txt", result.stdout);
-  await saveText(root, "" + (runDir) + "/command_error.txt", result.stderr);
-  await saveJson(root, "" + (runDir) + "/command_result.json", { exit_code: result.exitCode });
-  if (result.exitCode !== 0) {
-    throw new Error("Command exited with code " + (result.exitCode));
-  }
-  await addArtifact(root, {
-    taskId: task.task_id,
-    path: "" + (runDir) + "/command_output.txt",
-    type: "command_output",
-    description: "Command stdout for " + (task.task_id)
+  const policyRequest = classifyCommandAuthorization({
+    commandSpec: task.command,
+    agent,
+    task
   });
-  await incrementMetric(root, "local_commands");
+  const policyDecision = evaluateAuthorization(policyRequest);
+  const auditEvent = await recordPermissionAudit(root, {
+    deploymentId,
+    request: policyRequest,
+    decision: policyDecision
+  });
+  const transaction = await beginTransaction(root, {
+    deploymentId,
+    taskId: task.task_id,
+    agentId: agent.agent_id,
+    actionKind: policyRequest.kind,
+    actionSignals: {
+      command_name: task.command.command,
+      arg_count: task.command.args.length
+    },
+    permissionAuditEventId: auditEvent.event_id
+  });
+  if (policyDecision.decision === "deny") {
+    const denyReason =
+      "Local command denied by permission policy for " +
+      task.task_id +
+      "/" +
+      agent.agent_id +
+      ". Missing grants: " +
+      policyDecision.missing_grants.join(", ") +
+      ". Plan-check should have caught this earlier.";
+    await markTransaction(root, transaction.transaction_id, {
+      status: "Aborted",
+      failureReason: denyReason
+    });
+    throw new Error(denyReason);
+  }
+  let terminalRecorded = false;
+  try {
+    const result = await spawnCommand(task.command.command, task.command.args);
+    await saveText(root, "" + (runDir) + "/command_output.txt", result.stdout);
+    await saveText(root, "" + (runDir) + "/command_error.txt", result.stderr);
+    await saveJson(root, "" + (runDir) + "/command_result.json", { exit_code: result.exitCode });
+    if (result.exitCode !== 0) {
+      const failureReason = "Command exited with code " + result.exitCode;
+      await markTransaction(root, transaction.transaction_id, {
+        status: "Failed",
+        failureReason
+      });
+      terminalRecorded = true;
+      throw new Error(failureReason);
+    }
+    await addArtifact(root, {
+      taskId: task.task_id,
+      path: "" + (runDir) + "/command_output.txt",
+      type: "command_output",
+      description: "Command stdout for " + (task.task_id)
+    });
+    await incrementMetric(root, "local_commands");
+    await markTransaction(root, transaction.transaction_id, { status: "Committed" });
+    terminalRecorded = true;
+  } catch (error) {
+    if (!terminalRecorded) {
+      await markTransaction(root, transaction.transaction_id, {
+        status: "Failed",
+        failureReason: error instanceof Error ? error.message : String(error)
+      });
+    }
+    throw error;
+  }
 }
 
 async function spawnStructuredReviews(

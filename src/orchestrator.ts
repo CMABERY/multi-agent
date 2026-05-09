@@ -315,7 +315,8 @@ function buildOrchestratorInput(intent: Intent, registry: AgentRegistry): string
 }
 
 function formatAgentForOrchestrator(agent: AgentRegistry["agents"][number]): string {
-  const base = "- " + (agent.agent_id) + ": " + (agent.role) + "; executor=" + (agent.executor_type) + "; tier=" + (agent.model_tier ?? "unspecified");
+  const toolSuffix = agent.allowed_tools.length > 0 ? "; tools=" + (agent.allowed_tools.join(",")) : "";
+  const base = "- " + (agent.agent_id) + ": " + (agent.role) + "; executor=" + (agent.executor_type) + "; tier=" + (agent.model_tier ?? "unspecified") + toolSuffix;
   const performance = agent.performance;
   if (!performance || performance.tasks_assigned === 0) return base;
   const tokens = [

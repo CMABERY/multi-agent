@@ -343,7 +343,8 @@ describe("scaffold commands", () => {
           destructive_actions: false,
           credential_access: false,
           paid_actions: false,
-          public_actions: false
+          public_actions: false,
+          policy_grants: []
         },
         max_cost_usd: 0
       });

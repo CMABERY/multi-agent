@@ -207,6 +207,7 @@ describe("operator transition guidance", () => {
     await withWorkspace(async (root) => {
       await initWorkspace(root);
       await seedDeployment(root, { plan: { status: "approved", approval_required: false } });
+      await seedPassingPlanCheck(root);
 
       const result = await runCli(root, ["run", "--deployment", "DP-001"]);
 
@@ -224,6 +225,7 @@ describe("operator transition guidance", () => {
         plan: { status: "approved", approval_required: false },
         tasks: [{ dependencies: ["T-000"] }]
       });
+      await seedPassingPlanCheck(root);
 
       const result = await runCli(root, ["run", "--deployment", "DP-001"]);
 

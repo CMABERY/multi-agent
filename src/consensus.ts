@@ -1,8 +1,13 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { nextId } from "./ids.js";
+import { pathEscapesWorkspace } from "./intelligenceCommon.js";
 import {
+  ArtifactIndexSchema,
   ConsensusStoreSchema,
   ReviewLogSchema,
   TaskBoardSchema,
+  type Artifact,
   type Citation,
   type Consensus,
   type ConsensusVerdict,
@@ -12,12 +17,15 @@ import {
 } from "./schemas.js";
 import { loadJson, loadJsonOrDefault, nowIso, saveJson } from "./storage.js";
 
+const citableArtifactTypes = new Set(["model_output", "command_output"]);
+
 export async function computeConsensus(
   root: string,
   input: { taskId: string }
 ): Promise<Consensus> {
   const reviewLog = ReviewLogSchema.parse(await loadJson(root, "state/review_log.json"));
   const board = TaskBoardSchema.parse(await loadJson(root, "state/task_board.json"));
+  const artifactIndex = ArtifactIndexSchema.parse(await loadJson(root, "artifacts/artifact_index.json"));
   const store = ConsensusStoreSchema.parse(
     await loadJsonOrDefault(root, "state/consensus.json", { consensus_records: [] })
   );
@@ -26,7 +34,13 @@ export async function computeConsensus(
   if (taskReviews.length === 0) {
     throw new Error("No structured reviews found for " + (input.taskId) + ".");
   }
-  const reviews = latestReviewsByPersona(taskReviews);
+  const citationChecked = await validateReviewCitations(root, taskReviews, artifactIndex.artifacts);
+  if (citationChecked.changed) {
+    const checkedById = new Map(citationChecked.reviews.map((review) => [review.review_id, review]));
+    reviewLog.reviews = reviewLog.reviews.map((review) => checkedById.get(review.review_id) ?? review);
+    await saveJson(root, "state/review_log.json", reviewLog);
+  }
+  const reviews = latestReviewsByPersona(citationChecked.reviews);
   const criteria = criteriaForTask(task, reviews);
   const requiredReviewers = requiredReviewerCount(task);
   const nonAbstainCount = reviews.filter((review) => !isAbstention(review)).length;
@@ -67,6 +81,113 @@ export async function computeConsensus(
   else store.consensus_records.push(consensus);
   await saveJson(root, "state/consensus.json", store);
   return consensus;
+}
+
+async function validateReviewCitations(
+  root: string,
+  reviews: StructuredReview[],
+  artifacts: Artifact[]
+): Promise<{ reviews: StructuredReview[]; changed: boolean }> {
+  const artifactById = new Map(artifacts.map((artifact) => [artifact.artifact_id, artifact]));
+  let changed = false;
+  const checked: StructuredReview[] = [];
+  for (const review of reviews) {
+    const invalidity = await firstCitationInvalidity(root, review, artifactById);
+    if (!invalidity) {
+      checked.push(review);
+      continue;
+    }
+    changed = true;
+    checked.push({
+      ...review,
+      status: "abstain",
+      per_criterion: [],
+      malformed: true,
+      free_form_assessment: appendMalformedCitationReason(review, invalidity)
+    });
+  }
+  return { reviews: checked, changed };
+}
+
+async function firstCitationInvalidity(
+  root: string,
+  review: StructuredReview,
+  artifactById: Map<string, Artifact>
+): Promise<string | undefined> {
+  if (isAbstention(review)) return undefined;
+  for (const verdict of review.per_criterion) {
+    for (const citation of verdict.citations) {
+      const invalidity = await validateCitation(root, review, citation, artifactById);
+      if (invalidity) return invalidity;
+    }
+  }
+  return undefined;
+}
+
+async function validateCitation(
+  root: string,
+  review: StructuredReview,
+  citation: Citation,
+  artifactById: Map<string, Artifact>
+): Promise<string | undefined> {
+  const artifact = artifactById.get(citation.artifact_id);
+  if (!artifact) return "Citation " + (citation.artifact_id) + " does not exist in the artifact index.";
+  if (artifact.task_id !== review.task_id) {
+    return (
+      "Citation " +
+      (citation.artifact_id) +
+      " belongs to task " +
+      (artifact.task_id) +
+      ", not reviewed task " +
+      (review.task_id) +
+      "."
+    );
+  }
+  if (!citableArtifactTypes.has(artifact.type)) {
+    return "Citation " + (citation.artifact_id) + " is not a deliverable artifact (" + (artifact.type) + ").";
+  }
+  const lineCount = await readArtifactLineCount(root, artifact);
+  if (typeof lineCount === "string") return lineCount;
+  if (citation.line_end > lineCount) {
+    return (
+      "Citation " +
+      (citation.artifact_id) +
+      " lines " +
+      (citation.line_start) +
+      "-" +
+      (citation.line_end) +
+      " are outside artifact " +
+      (citation.artifact_id) +
+      " line count " +
+      (lineCount) +
+      "."
+    );
+  }
+  return undefined;
+}
+
+async function readArtifactLineCount(root: string, artifact: Artifact): Promise<number | string> {
+  if (pathEscapesWorkspace(root, artifact.path)) {
+    return "Citation " + (artifact.artifact_id) + " path escapes the workspace.";
+  }
+  try {
+    const content = await readFile(join(root, artifact.path), "utf8");
+    return countLines(content);
+  } catch {
+    return "Citation " + (artifact.artifact_id) + " artifact file is missing or unreadable.";
+  }
+}
+
+function countLines(content: string): number {
+  const normalized = content.endsWith("\n") ? content.slice(0, -1) : content;
+  if (normalized.length === 0) return 0;
+  return normalized.split("\n").length;
+}
+
+function appendMalformedCitationReason(review: StructuredReview, reason: string): string {
+  const prefix = review.free_form_assessment.trim();
+  const suffix = "Malformed review citation: " + reason;
+  return prefix ? "" + (prefix) + "\n" + (suffix) : suffix;
 }
 
 function latestReviewsByPersona(reviews: StructuredReview[]): StructuredReview[] {
