@@ -336,6 +336,28 @@ describe("agentic orchestrator workflow", () => {
     });
   });
 
+  test("orchestrator refuses to re-orchestrate an intent that is no longer status new", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+      const intent = await createIntent(root, { text: "Build a verified demo artifact." });
+      const modelClient = {
+        createResponse: vi.fn().mockResolvedValue(modelResponse(JSON.stringify(validOrchestratorPayload())))
+      };
+
+      await orchestrateIntent(root, { intentId: intent.intent_id, modelClient });
+
+      await expect(
+        orchestrateIntent(root, { intentId: intent.intent_id, modelClient })
+      ).rejects.toThrow(/^Intent I-001 is already planned and cannot be re-orchestrated\..*Existing deployments: DP-001\.$/);
+
+      const plans = await loadJson(root, "state/deployment_plan.json");
+      const tasks = await loadJson(root, "state/task_board.json");
+      expect(plans.deployment_plans).toHaveLength(1);
+      expect(tasks.tasks).toHaveLength(1);
+      expect(modelClient.createResponse).toHaveBeenCalledTimes(1);
+    });
+  });
+
   test("orchestrator removes the empty decision-log placeholder before appending decisions", async () => {
     await withWorkspace(async (root) => {
       await initWorkspace(root);

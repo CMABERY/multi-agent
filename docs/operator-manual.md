@@ -553,7 +553,7 @@ Command:
 
 Inputs:
 
-- --intent <intentId>: required. Intent ID such as I-001.
+- --intent <intentId>: optional. Defaults to the active intent; see Active Context Defaults. orchestrate refuses any intent already in status planned, approved, running, completed, or blocked to prevent duplicate deployments.
 
 Reads:
 
@@ -621,6 +621,7 @@ Failure handling:
 - Truncated model response: increase max_output_tokens or reduce intent complexity.
 - Unknown agent selected by model: adjust registry or rerun orchestration.
 - Max retries exhausted: inspect the final violation codes in the thrown error.
+- Already-orchestrated intent: orchestrate emits a recovery packet of the form "Intent I-001 is already planned and cannot be re-orchestrated." Inspect status, then create a new intent if more work is needed.
 
 ### plan-check
 
@@ -633,7 +634,7 @@ Command:
 
 Inputs:
 
-- --deployment <deploymentId>: required.
+- --deployment <deploymentId>: optional. Defaults to the active deployment; see Active Context Defaults.
 - --json: optional. Prints the full PlanCheck JSON.
 
 Reads:
@@ -690,7 +691,7 @@ Command:
 
 Inputs:
 
-- --deployment <deploymentId>: required.
+- --deployment <deploymentId>: optional. Defaults to the active deployment; see Active Context Defaults.
 - --approver <name>: required.
 - --scope <scope>: required. Exact approved or rejected scope.
 - --decision <decision>: optional. approved or rejected. Defaults to approved.
@@ -727,7 +728,7 @@ Command:
 
 Inputs:
 
-- --deployment <deploymentId>: required.
+- --deployment <deploymentId>: optional. Defaults to the active deployment; see Active Context Defaults.
 - --execute: optional. Required for local_command assignments.
 - --rerun: optional. Allows explicit rerun of a completed or failed deployment.
 
@@ -797,7 +798,7 @@ Command:
 
 Inputs:
 
-- --task <taskId>: required.
+- --task <taskId>: optional. Defaults to the active task; see Active Context Defaults.
 - --json: optional. Prints the full ContextCheck JSON.
 
 Reads:
@@ -843,7 +844,7 @@ Command:
 
 Inputs:
 
-- --task <taskId>: required.
+- --task <taskId>: optional. Defaults to the active task; see Active Context Defaults.
 - --reviewer <reviewer>: required. Reviewer ID or name.
 - --status <status>: optional. pass or fail. Defaults to pass.
 - --issue <issue...>: optional. Variadic issue text.
@@ -879,7 +880,7 @@ Command:
 
 Inputs:
 
-- --task <taskId>: required.
+- --task <taskId>: optional. Defaults to the active task; see Active Context Defaults.
 - --json: optional. Prints the full consensus record.
 
 Reads:
@@ -960,7 +961,7 @@ Command:
 
 Inputs:
 
-- --deployment <deploymentId>: required.
+- --deployment <deploymentId>: optional. Defaults to the active deployment; see Active Context Defaults.
 - --json: optional. Prints full score JSON.
 
 Reads:
@@ -1020,7 +1021,7 @@ Command:
 
 Inputs:
 
-- --deployment <deploymentId>: required.
+- --deployment <deploymentId>: optional. Defaults to the active deployment; see Active Context Defaults.
 - --json: optional. Prints the retrospective JSON record.
 
 Reads:
@@ -1067,7 +1068,7 @@ Command:
 
 Inputs:
 
-- --deployment <deploymentId>: required.
+- --deployment <deploymentId>: optional. Defaults to the active deployment; see Active Context Defaults.
 - --json: optional. Prints all agents after performance projection.
 
 Reads:

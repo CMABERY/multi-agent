@@ -234,6 +234,22 @@ describe("operator recovery packets", () => {
     });
   });
 
+  test("re-orchestration refusal packet routes to status and intent create", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+
+      const packet = await expectPacket(
+        root,
+        "Intent I-001 is already planned and cannot be re-orchestrated. Existing deployments: DP-001."
+      );
+
+      expect(packet.why).toContain("re-orchestration would create a duplicate deployment");
+      expect(packet.state_safety).toBe("safe; no orchestration was run.");
+      expect(packet.corrective_command).toBe("maw status");
+      expect(packet.next_command).toMatch(/^maw intent create/);
+    });
+  });
+
   test("no active deployment packet routes to status", async () => {
     await withWorkspace(async (root) => {
       await initWorkspace(root);

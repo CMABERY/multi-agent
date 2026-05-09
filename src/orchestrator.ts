@@ -105,6 +105,19 @@ export async function orchestrateIntent(
   const queue = IntentQueueSchema.parse(await loadJson(root, "state/intent_queue.json"));
   const intent = queue.intents.find((entry) => entry.intent_id === input.intentId);
   if (!intent) throw new Error("Intent not found: " + (input.intentId));
+  if (intent.status !== "new") {
+    const planStorePeek = DeploymentPlanStoreSchema.parse(
+      await loadJson(root, "state/deployment_plan.json")
+    );
+    const existingDeployments = planStorePeek.deployment_plans
+      .filter((entry) => entry.intent_id === intent.intent_id)
+      .map((entry) => entry.deployment_id);
+    const existingSuffix =
+      existingDeployments.length > 0 ? " Existing deployments: " + existingDeployments.join(", ") + "." : "";
+    throw new Error(
+      "Intent " + intent.intent_id + " is already " + intent.status + " and cannot be re-orchestrated." + existingSuffix
+    );
+  }
 
   const registry = AgentRegistrySchema.parse(await loadJson(root, "state/agent_registry.json"));
   const config = await loadModelConfig(root);
