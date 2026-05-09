@@ -205,12 +205,17 @@ describe("bootstrap posture escalations", () => {
 
   test("evaluatePosture: governed only when wide_scan triggers AND work-type is architecture or risky", async () => {
     // wide_scan trigger: missing remote (only). No running deployments, has commits — keeps it out of ask_human.
+    const architectureMarker =
+      "governed promotion: architecture work requires governed review because wide_scan triggers are present.";
     const widescan = evaluatePosture({
       continuity: minimalContinuity({ activeRunning: false }),
       counterContext: minimalCounter({ gitPresent: true, hasCommits: true, hasRemote: false }),
       workType: "architecture"
     });
     expect(widescan.posture).toBe("governed");
+    expect(widescan.reasons).toContain("git repository has no remote configured.");
+    expect(widescan.reasons).toContain(architectureMarker);
+    expect(widescan.reasons.filter((reason) => reason === architectureMarker)).toHaveLength(1);
     expect(widescan.requiredExtraReview.length).toBeGreaterThan(0);
     expect(widescan.requiredExtraReview.join("\n")).not.toContain(String.fromCharCode(96));
 
@@ -220,7 +225,21 @@ describe("bootstrap posture escalations", () => {
       workType: "ordinary"
     });
     expect(ordinary.posture).toBe("wide_scan");
+    expect(ordinary.reasons).toContain("git repository has no remote configured.");
+    expect(ordinary.reasons.join("\n")).not.toContain("governed promotion");
     expect(ordinary.requiredExtraReview).toEqual([]);
+
+    const askHuman = evaluatePosture({
+      continuity: minimalContinuity({ activeRunning: false }),
+      counterContext: {
+        ...minimalCounter({ gitPresent: true, hasCommits: true, hasRemote: false }),
+        parse_failures: [{ path: "state/task_board.json", error: "invalid json" }]
+      },
+      workType: "architecture"
+    });
+    expect(askHuman.posture).toBe("ask_human");
+    expect(askHuman.reasons).toContain("git repository has no remote configured.");
+    expect(askHuman.reasons.join("\n")).not.toContain("governed promotion");
   });
 
   test("ordinary work with commits, remote, and large untracked surface escalates to wide_scan", () => {

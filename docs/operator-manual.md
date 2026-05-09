@@ -940,7 +940,7 @@ Posture levels and exit codes:
 
 - normal → exit 0. No escalations triggered.
 - wide_scan → exit 0. Source-of-truth gaps, capped total git status output, large/capped top-level untracked entries, hygiene gaps, active deployments/tasks, or doc/code drift detected — review more before acting.
-- governed → exit 1. wide_scan triggers combined with --work-type risky or architecture. required_extra_review will list extra steps such as initializing git, adding .gitignore, or running plan-check before approval.
+- governed → exit 1. wide_scan triggers combined with --work-type risky or architecture. The packet includes a governed promotion reason in posture_reasons so the operator can see that governed review was selected because wide_scan triggers were present for higher-risk work. required_extra_review lists action steps such as initializing git, adding .gitignore, or running plan-check before approval.
 - ask_human → exit 2. Hard stop: core state file unparseable, running deployment overlaps with stateful/risky/architecture work, or risky work attempted without reliable source truth.
 
 Persistence behavior:

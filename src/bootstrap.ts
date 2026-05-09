@@ -541,6 +541,11 @@ export function evaluatePosture(input: PostureInput): PostureResult {
   const escalationToGovernedAllowed: BootstrapWorkType[] = ["risky", "architecture"];
   if (posture === "wide_scan" && escalationToGovernedAllowed.includes(input.workType)) {
     posture = "governed";
+    reasons.push(
+      "governed promotion: " +
+        input.workType +
+        " work requires governed review because wide_scan triggers are present."
+    );
     if (input.continuity.active_deployments.some((deployment) => deployment.status === "running")) {
       requiredExtraReview.push("Pause or complete the running deployment before mutating shared state.");
     }
