@@ -13,6 +13,7 @@ import {
   estimateModelCostUsd,
   loadModelConfig,
   type ModelClient,
+  type ModelTool,
   selectModel
 } from "./openai.js";
 import { buildReviewerInstructions } from "./reviewerPrompts.js";
@@ -62,6 +63,31 @@ const ReviewerOutputSchema = z.object({
 });
 
 const outputArtifactTypes = new Set(["model_output", "command_output"]);
+const WEB_SEARCH_SOURCES_INCLUDE = "web_search_call.action.sources";
+
+function buildModelToolRequest(agent: Agent): {
+  tools?: ModelTool[];
+  toolChoice?: "auto";
+  include?: string[];
+} {
+  if (!agent.allowed_tools.includes("web_search")) return {};
+  return {
+    tools: [{ type: "web_search" }],
+    toolChoice: "auto",
+    include: [WEB_SEARCH_SOURCES_INCLUDE]
+  };
+}
+
+function buildModelAgentInstructions(agent: Agent, tools: ModelTool[] | undefined): string {
+  if (!tools || tools.length === 0) {
+    return "You are " + (agent.role) + ". Complete the assigned task using only the scoped context packet.";
+  }
+  return (
+    "You are " +
+    (agent.role) +
+    ". Complete the assigned task using the scoped context packet and the provided hosted tools. Use hosted tools only when needed, and cite sources returned by tool-backed research."
+  );
+}
 
 export async function runDeployment(
   root: string,
@@ -233,16 +259,20 @@ async function runModelAgent(
   const client = modelClient ?? (await createDefaultModelClient(root));
   const contextPacket = await buildScopedContextPacket(root, task);
   const model = selectModel(config, agent.model_tier ?? task.model_tier, agent.model);
+  const toolRequest = buildModelToolRequest(agent);
   await saveJson(root, "" + (runDir) + "/model_request_summary.json", {
     model,
     agent_id: agent.agent_id,
-    task_id: task.task_id
+    task_id: task.task_id,
+    allowed_tools: agent.allowed_tools,
+    enabled_tools: toolRequest.tools?.map((tool) => tool.type) ?? []
   });
   const output = await client.createResponse({
     model,
-    instructions: "You are " + (agent.role) + ". Complete the assigned task using only the scoped context packet.",
+    instructions: buildModelAgentInstructions(agent, toolRequest.tools),
     input: contextPacket,
-    maxOutputTokens: config.max_output_tokens
+    maxOutputTokens: config.max_output_tokens,
+    ...toolRequest
   });
   const responseText = normalizeModelOutputForAcceptance(task, output.text);
   await saveText(root, "" + (runDir) + "/response_output.md", responseText);

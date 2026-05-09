@@ -120,6 +120,12 @@ Model-backed commands require an API key in the environment variable named by st
 
     $env:OPENAI_API_KEY = "sk-..."
 
+OpenAI API model calls do not receive live web access by default. To enable hosted web search for a model task, route it to a model_agent whose allowed_tools includes web_search. MAW then sends the Responses API web_search tool with tool_choice auto for that task request.
+
+Example web-capable research agent:
+
+    node dist/src/index.js scaffold agent --id web_researcher --role "Research Agent" --executor model_agent --model-tier high --allow-tool web_search
+
 Commands that call a model:
 
 - orchestrate
@@ -849,6 +855,7 @@ Executor behavior:
 
 - dry_run writes delegation_packet.md, registers a delegation_packet artifact, and increments the dry-run metric.
 - model_agent builds a scoped context packet, calls the configured model, writes response_output.md, and registers model_output.
+- model_agent sends hosted web search only when the assigned agent has web_search in allowed_tools; otherwise the request is scoped-context only.
 - local_command requires --execute, checks the command allowlist, writes command_output.txt, command_error.txt, and command_result.json, and registers command_output on exit code 0.
 
 Approval behavior:
@@ -1388,7 +1395,7 @@ Inputs:
 - --model-tier <tier>: optional. low, mid, or high. Default mid; default low for local_command.
 - --model <model>: optional. Explicit model name.
 - --max-cost <amount>: optional nonnegative number. Default 1 for model_agent, 0 otherwise.
-- --allow-tool <tool...>: optional repeatable values.
+- --allow-tool <tool...>: optional repeatable values. web_search enables the OpenAI Responses API hosted web search tool for model_agent task requests.
 - --allow-command <command...>: optional repeatable values. Valid only for the local_command executor; passing --allow-command with any other executor refuses the scaffold.
 
 Reads:
@@ -1731,6 +1738,11 @@ Allowed reviewer personas:
 - adversarial
 
 Performance is maintained by performance update. Avoid hand-editing it unless repairing state.
+
+Allowed model tools:
+
+- web_search maps to the OpenAI Responses API hosted web search tool. The runner passes tools with type web_search, tool_choice auto, and includes web_search_call.action.sources so source metadata is available in the provider response.
+- Any model_agent without web_search in allowed_tools is intentionally offline except for the scoped context packet and dependency artifacts MAW supplies.
 
 ## State Editing Guidance
 

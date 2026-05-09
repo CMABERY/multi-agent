@@ -265,7 +265,7 @@ function instructionTemplates(): Record<string, string> {
     "instructions/red_team.md":
       "# Red-Team Agent\n\nFind failure modes, abuse cases, brittle assumptions, and security gaps.\n",
     "instructions/browser_agent.md":
-      "# Browser Agent\n\nBrowser automation is future work in this MVP. External actions require explicit approval.\n",
+      "# Browser Agent\n\nBrowser automation is future work in this MVP. Hosted web search is available only to model agents with web_search in allowed_tools. External actions require explicit approval.\n",
     "instructions/synthesizer.md":
       "# Synthesizer Agent\n\nIntegrate verified outputs, review records, decisions, approvals, and metrics into a final deliverable.\n"
   };

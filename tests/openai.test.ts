@@ -84,6 +84,29 @@ describe("OpenAIResponsesClient", () => {
     });
   });
 
+  test("sends hosted web search tools when requested", async () => {
+    stubResponse({
+      status: "completed",
+      output_text: "searched"
+    });
+
+    const request = {
+      model: "test-model",
+      instructions: "follow",
+      input: "prompt",
+      tools: [{ type: "web_search" }],
+      toolChoice: "auto" as const,
+      include: ["web_search_call.action.sources"]
+    };
+    await new OpenAIResponsesClient(config()).createResponse(request);
+
+    const fetchMock = vi.mocked(fetch);
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(body.tools).toEqual([{ type: "web_search" }]);
+    expect(body.tool_choice).toBe("auto");
+    expect(body.include).toEqual(["web_search_call.action.sources"]);
+  });
+
   test("marks responses truncated when top-level status is incomplete", async () => {
     stubResponse({ status: "incomplete", output_text: "partial" });
 

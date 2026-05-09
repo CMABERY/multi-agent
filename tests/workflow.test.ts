@@ -733,6 +733,25 @@ describe("agentic orchestrator workflow", () => {
     });
   });
 
+  test("orchestrator input advertises allowed model tools", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+      const registry = await loadJson(root, "state/agent_registry.json");
+      const researcher = registry.agents.find((agent: { agent_id: string }) => agent.agent_id === "researcher_1");
+      researcher.allowed_tools = ["web_search"];
+      await saveJson(root, "state/agent_registry.json", registry);
+      const intent = await createIntent(root, { text: "Research current public information." });
+      const modelClient = {
+        createResponse: vi.fn().mockResolvedValue(modelResponse(JSON.stringify(validOrchestratorPayload())))
+      };
+
+      await orchestrateIntent(root, { intentId: intent.intent_id, modelClient });
+
+      const input = modelClient.createResponse.mock.calls[0]?.[0].input ?? "";
+      expect(input).toContain("- researcher_1: Research Agent; executor=model_agent; tier=mid; tools=web_search");
+    });
+  });
+
   test("pre-flight validation passes clean plans without retry or synthetic decision", async () => {
     await withWorkspace(async (root) => {
       await initWorkspace(root);
