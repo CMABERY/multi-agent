@@ -1,13 +1,13 @@
 # MAW Operator Manual
 
-This is the reference manual for the MAW CLI. Use it to answer four operator questions quickly:
+This is the reference manual for the MAW CLI. Use it to answer four operator questions:
 
 - What command should I run?
 - What does that command read and write?
 - Does it call a model?
 - What should I check before continuing?
 
-For scenario walkthroughs, use [operational-demonstrations.md](operational-demonstrations.md). This manual is the reference surface; the demonstration suite is the practice guide.
+For scenario walkthroughs, use [operational-demonstrations.md](operational-demonstrations.md). For conceptual orientation, see the [README](../README.md). This manual is the reference surface; the demonstration suite is the practice guide.
 
 Examples use the built local CLI:
 
@@ -15,37 +15,44 @@ Examples use the built local CLI:
 
 If the package binary is linked or installed, replace node dist/src/index.js with maw.
 
-Do not run subcommand labels by themselves. For example, intent create is a MAW command path, not a PowerShell executable. In this checkout, run:
+A subcommand path such as intent create is not a shell executable on its own. Always invoke it through the CLI:
 
-    node .\dist\src\index.js intent create --text "Build a verified demo artifact."
+    node dist/src/index.js intent create --text "Build a verified demo artifact."
+
+Many ID flags default to the active context once the workspace has one. See [Active Context Defaults](#active-context-defaults).
 
 ## Fast Start
 
-Install, build, initialize, and validate:
+Install and build:
 
     npm install
     npm run build
+
+Initialize and orient:
+
     node dist/src/index.js init
-    node dist/src/index.js validate
-
-Orient before choosing the next operation:
-
     node dist/src/index.js status
     node dist/src/index.js next
     node dist/src/index.js doctor
 
-Normal workflow:
+Run the normal workflow stage by stage:
 
     node dist/src/index.js intent create --text "Build a verified demo artifact." --risk medium
-    node dist/src/index.js orchestrate --intent I-001
-    node dist/src/index.js plan-check --deployment DP-001
-    node dist/src/index.js approval record --deployment DP-001 --approver "operator" --scope "Run DP-001 as proposed."
-    node dist/src/index.js run --deployment DP-001
-    node dist/src/index.js score --deployment DP-001
-    node dist/src/index.js retrospective --deployment DP-001
-    node dist/src/index.js performance update --deployment DP-001
+    node dist/src/index.js orchestrate
+    node dist/src/index.js plan-check
+    node dist/src/index.js approval record --approver "operator" --scope "Run DP-001 as proposed."
+    node dist/src/index.js run
+    node dist/src/index.js score
+    node dist/src/index.js retrospective
+    node dist/src/index.js performance update
     node dist/src/index.js validate
     node dist/src/index.js report
+
+Or chain stages 1 through 3 in a single command, stopping at the approval gate:
+
+    node dist/src/index.js plan --text "Build a verified demo artifact." --risk medium
+    node dist/src/index.js approval record --approver "operator" --scope "Run DP-001 as proposed."
+    node dist/src/index.js run
 
 Session readiness check:
 
@@ -54,11 +61,17 @@ Session readiness check:
 
 ## Operator Map
 
-Use this sequence for most runs:
+Orient first, then move through the stages:
+
+- status: where am I in the workflow.
+- next: the single recommended next command.
+- doctor: setup, environment, and workflow issues with repair guidance.
+
+Workflow stages, in order:
 
 1. init prepares local workspace files.
 2. intent create records the operator objective.
-3. orchestrate asks the model to produce a prompt contract, tasks, and deployment plan.
+3. orchestrate converts intent to a prompt contract, tasks, and deployment plan.
 4. plan-check audits the persisted deployment plan.
 5. approval record records a human decision.
 6. run executes the approved deployment.
@@ -68,6 +81,10 @@ Use this sequence for most runs:
 10. performance update refreshes routing memory.
 11. validate checks state consistency.
 12. report produces the current handoff view.
+
+Shortcut for stages 2 through 4:
+
+- plan creates the intent, orchestrates, and runs plan-check in one call. Approval, run, and everything after remain explicit.
 
 Use bootstrap before starting work when you need a deterministic readiness packet that combines continuity, counter-context, and posture.
 
@@ -106,6 +123,7 @@ Model-backed commands require an API key in the environment variable named by st
 Commands that call a model:
 
 - orchestrate
+- plan (chains orchestrate; plan-check is deterministic)
 - run when any assignment uses model_agent
 - automatic structured reviews spawned by run
 
@@ -113,21 +131,23 @@ Commands that do not require a model key:
 
 - init
 - intent create
-- approval record
-- review record
-- consensus compute
-- migrate
-- validate
-- score
-- plan-check
-- context-check
-- retrospective, unless it first needs to compute missing score state
-- performance update
 - status
 - next
 - doctor
+- plan-check
+- approval record
+- context-check
+- review record
+- consensus compute
+- migrate
+- score
+- retrospective (unless it computes a missing score, which is deterministic)
+- performance update
+- validate
 - report
 - bootstrap
+- scaffold agent, scaffold reviewer, scaffold protocol, scaffold command
+- operator metrics
 
 ## Core Concepts
 
@@ -855,6 +875,7 @@ Common blockers:
 - Command is not allowlisted for <agent_id>: <command>.
 - Dependency not completed: T-001.
 - Model quota or missing API key errors.
+- No active deployment when --deployment is omitted and no active context exists. Run maw status to inspect available deployments.
 
 ### context-check
 
@@ -1711,11 +1732,11 @@ When manual edits are necessary:
 - Run validate after edits.
 - Recompute derived state after edits.
 
-Recommended repair sequence:
+Recommended repair sequence (uses implicit active context; pass --task or --deployment to target a different one):
 
-    node dist/src/index.js consensus compute --task T-001
-    node dist/src/index.js score --deployment DP-001
-    node dist/src/index.js performance update --deployment DP-001
+    node dist/src/index.js consensus compute
+    node dist/src/index.js score
+    node dist/src/index.js performance update
     node dist/src/index.js validate
 
 Derived files include:
@@ -1727,6 +1748,66 @@ Derived files include:
 - state/learning_memory.json
 
 ## Troubleshooting
+
+### Invalid Risk Level
+
+Symptom:
+
+    Error: Invalid risk level: bogus. Must be low, medium, or high.
+
+Meaning:
+
+- intent create or plan received a --risk value outside the allowed set.
+
+Fix:
+
+- Re-run with --risk low, --risk medium, or --risk high.
+- No intent is written when this error fires; state/intent_queue.json is unchanged.
+
+### Empty Intent Text
+
+Symptom:
+
+    Error: Intent text must be non-empty.
+
+Meaning:
+
+- --text was missing, blank, or whitespace-only.
+
+Fix:
+
+- Pass a non-empty --text value describing the work.
+
+### Re-Orchestration Refused
+
+Symptom:
+
+    Error: Intent I-001 cannot be re-orchestrated (status: planned). Existing deployments: DP-001.
+
+Meaning:
+
+- The intent already has a deployment, or its status is no longer new. The deployment-plan check runs first, so partial-write recovery (deployment persisted but intent_queue not yet updated) still refuses.
+
+Fix:
+
+- Inspect maw status and continue with the existing deployment.
+- If new work is required, create a new intent with maw intent create or maw plan.
+
+### No Active Context
+
+Symptom:
+
+    Error: No active deployment. Pass --deployment <id> or run maw status to inspect deployments.
+
+Or the same shape for No active intent / No active task.
+
+Meaning:
+
+- The omitted ID flag had no active context to default to.
+
+Fix:
+
+- Run maw status to see what is available, or pass the explicit ID flag.
 
 ### Missing API Key
 
@@ -1847,31 +1928,35 @@ Fix:
 
 ## Operator Checklists
 
+These checklists use implicit active-context defaults. Pass the explicit --deployment or --task flag if you need to target a non-active workflow object.
+
 ### Before Approval
 
 Run:
 
+    node dist/src/index.js status
     node dist/src/index.js bootstrap --work-type ordinary
-    node dist/src/index.js plan-check --deployment DP-001
-    node dist/src/index.js context-check --task T-001
+    node dist/src/index.js plan-check
+    node dist/src/index.js context-check
     node dist/src/index.js report
 
 Approve only when:
 
+- status confirms the active deployment is the one you intend to approve.
 - Bootstrap posture is acceptable for the work type.
 - Plan check has no high-severity issues.
 - Critical tasks have readable context.
 - Dry-run routes are delegation-only.
-- High-risk tasks require review and have enough reviewer personas.
+- High-risk tasks have enough reviewer personas registered.
 - Local-command routes are allowlisted and intentional.
 
 ### After Run
 
 Run:
 
-    node dist/src/index.js score --deployment DP-001
-    node dist/src/index.js retrospective --deployment DP-001
-    node dist/src/index.js performance update --deployment DP-001
+    node dist/src/index.js score
+    node dist/src/index.js retrospective
+    node dist/src/index.js performance update
     node dist/src/index.js validate
 
 Accept the run only when:
@@ -1887,8 +1972,8 @@ Accept the run only when:
 Run:
 
     node dist/src/index.js report
-    node dist/src/index.js score --deployment DP-001 --json
-    node dist/src/index.js plan-check --deployment DP-001 --json
+    node dist/src/index.js score --json
+    node dist/src/index.js plan-check --json
     node dist/src/index.js validate
 
 Document:

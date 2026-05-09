@@ -1,20 +1,22 @@
 # MAW Operational Demonstration Suite
 
-This is the scenario guide for operating MAW. Use it to practice complete workflows, common failure paths, and handoff routines.
+This is the scenario guide for operating MAW. Use it to practice complete workflows, common failure paths, and handoff routines. Each demo is designed to be runnable in sequence in an isolated workspace.
 
-For exact command inputs, reads, writes, and exit behavior, use [operator-manual.md](operator-manual.md). This document shows how those commands fit together during real operation.
+For exact command inputs, reads, writes, and exit behavior, use [operator-manual.md](operator-manual.md). For conceptual orientation, see the [README](../README.md). This document shows how the documented commands fit together during real operation.
 
 All examples assume PowerShell and a repository checkout at C:\Multi-Agent.
 
-Do not run MAW subcommand labels by themselves. intent create is not a PowerShell executable. Invoke it through MAW:
+Do not run MAW subcommand labels as standalone shell commands. intent create is a MAW command path, not a PowerShell executable. Invoke it through MAW:
 
     node .\dist\src\index.js intent create --text "Build a verified demo artifact."
 
+Many ID flags default to the active context, so demos written in implicit form work after the workspace has been initialized and an intent or deployment has been created. See the operator manual's Active Context Defaults section.
+
 ## Demonstration Setup
 
-Run demonstrations in an isolated workspace when possible. MAW reads and writes state in the current working directory, so a scratch workspace prevents accidental changes to live state/.
+Run demonstrations in an isolated workspace. MAW reads and writes state in the current working directory, so a scratch workspace prevents accidental changes to live state/.
 
-Prepare the CLI:
+Prepare the CLI once:
 
     cd C:\Multi-Agent
     npm install
@@ -31,37 +33,32 @@ Run MAW from the scratch workspace:
 
     node $MawCli <command>
 
-Model-backed demonstrations require the environment variable named in state/model_config.json. The default is OPENAI_API_KEY.
+Model-backed demonstrations require the environment variable named in state/model_config.json. The default is OPENAI_API_KEY:
 
     $env:OPENAI_API_KEY = "sk-..."
 
-State-only demonstrations do not need an API key:
+Commands that call a model:
 
-- init
-- intent create
-- approval record
-- plan-check
-- context-check
-- review record
-- consensus compute
-- migrate
-- score
-- retrospective
-- performance update
-- validate
-- report
-- bootstrap
-- status
-- next
-- doctor
+- orchestrate
+- plan (chains orchestrate; plan-check is deterministic)
+- run when any assignment uses model_agent
+- automatic structured reviews spawned by run
+
+State-only commands that do not require an API key:
+
+- init, status, next, doctor
+- intent create, plan-check, approval record, context-check, review record, consensus compute, migrate
+- score, retrospective, performance update, validate, report, bootstrap
 - scaffold agent, scaffold reviewer, scaffold protocol, scaffold command
 - operator metrics
 
 ## Demo Index
 
+Demos 1 through 21 cover the workflow ledger. Demos 22 through 25 cover the operator console layer. Each demo follows the same template: Purpose, Run, Expected result, Operator decision.
+
 | Situation | Demo |
 | --- | --- |
-| Normal operator path | Demo 1 |
+| Normal operator path (and the plan shortcut) | Demo 1 |
 | Fresh workspace setup | Demo 2 |
 | Intent capture variants | Demo 3 |
 | Approval required before execution | Demo 4 |
@@ -89,33 +86,46 @@ State-only demonstrations do not need an API key:
 
 ## Demo 1: Complete Typical Workflow
 
-Purpose: run the normal path from intent to report.
+Purpose: run the normal path from intent to report. After the active context is set, --deployment and --task default to it; the commands below use the implicit form.
 
-Run:
+Run, stage by stage:
 
     Set-Location $DemoRoot
     node $MawCli init
     node $MawCli intent create --text "Create a concise operator-facing summary of the MAW verification workflow." --risk medium --constraint "Use only workspace-local evidence." --constraint "The output must be reviewable by cited acceptance criteria."
-    node $MawCli orchestrate --intent I-001
-    node $MawCli plan-check --deployment DP-001
+    node $MawCli orchestrate
+    node $MawCli plan-check
     node $MawCli report
-    node $MawCli approval record --deployment DP-001 --approver "operator" --scope "Run DP-001 exactly as proposed by the orchestrator."
-    node $MawCli run --deployment DP-001
-    node $MawCli score --deployment DP-001
-    node $MawCli retrospective --deployment DP-001
-    node $MawCli performance update --deployment DP-001
+    node $MawCli approval record --approver "operator" --scope "Run DP-001 exactly as proposed by the orchestrator."
+    node $MawCli run
+    node $MawCli score
+    node $MawCli retrospective
+    node $MawCli performance update
+    node $MawCli validate
+    node $MawCli report
+
+Or chain stages 1 through 3 with the plan shortcut:
+
+    Set-Location $DemoRoot
+    node $MawCli init
+    node $MawCli plan --text "Create a concise operator-facing summary of the MAW verification workflow." --risk medium --constraint "Use only workspace-local evidence." --constraint "The output must be reviewable by cited acceptance criteria."
+    node $MawCli approval record --approver "operator" --scope "Run DP-001 exactly as proposed by the orchestrator."
+    node $MawCli run
+    node $MawCli score
+    node $MawCli retrospective
+    node $MawCli performance update
     node $MawCli validate
     node $MawCli report
 
 Expected result:
 
 - init prints Initialized multi-agent workflow workspace, then transition guidance with workflow state idle and a recommended next command.
-- intent create prints Created intent I-001 followed by transition guidance pointing at maw orchestrate --intent I-001.
-- orchestrate prints a created deployment such as DP-001 with task IDs and transition guidance pointing at the next plan check.
+- intent create prints Created intent I-001 followed by transition guidance pointing at maw orchestrate.
+- orchestrate prints a created deployment such as DP-001 with task IDs and transition guidance pointing at the next plan check. The plan shortcut compresses intent create + orchestrate + plan-check into a single output block, then transition guidance for approval.
 - plan-check has no high-severity issues before approval and prints transition guidance.
 - approval record prints Recorded approval AP-001 followed by transition guidance.
 - run prints completed task IDs or failed task IDs and transition guidance; failed runs route the operator to maw doctor.
-- score, retrospective, performance update, validate, and report complete the run evidence; non-JSON commands append transition guidance, while report stays a pure handoff payload.
+- score, retrospective, performance update, validate, and report complete the run evidence. Non-JSON commands append transition guidance; report stays a pure handoff payload.
 
 Operator decision:
 
@@ -184,7 +194,7 @@ Purpose: verify that MAW blocks execution until a deployment is approved.
 
 Run before approval:
 
-    node $MawCli run --deployment DP-001
+    node $MawCli run
 
 Expected failure renders a structured recovery packet:
 
@@ -194,35 +204,31 @@ Expected failure renders a structured recovery packet:
     Corrective Command: maw plan-check --deployment DP-001
     Then: maw approval record --deployment DP-001 --approver "operator" --scope "Run DP-001 after plan-check review."
 
-Approve:
+Approve, then run:
 
-    node $MawCli approval record --deployment DP-001 --approver "operator" --scope "Run DP-001 after plan-check review."
-
-Run after approval:
-
-    node $MawCli run --deployment DP-001
+    node $MawCli approval record --approver "operator" --scope "Run DP-001 after plan-check review."
+    node $MawCli run
 
 Reject instead:
 
-    node $MawCli approval record --deployment DP-001 --approver "operator" --scope "Reject until routing is corrected." --decision rejected
+    node $MawCli approval record --approver "operator" --scope "Reject until routing is corrected." --decision rejected
 
 Operator decision:
 
 - Approval scope should be exact enough for later audit.
 - A rejected deployment is set to blocked. Re-orchestrate or repair state before approval.
+- The recovery packet still prints explicit IDs in its Corrective Command and Then lines so the operator can copy the suggestion verbatim, even though implicit context would also work.
 
 ## Demo 5: Dry-Run Packet Only
 
 Purpose: use dry_run only for packet generation, not real deliverables.
 
-Run:
+Run, using the plan shortcut for stages 1 through 3:
 
-    node $MawCli intent create --text "Create a delegation packet only for a future documentation implementation." --risk low --constraint "The output is only a packet, not the final documentation."
-    node $MawCli orchestrate --intent I-001
-    node $MawCli plan-check --deployment DP-001
-    node $MawCli approval record --deployment DP-001 --approver "operator" --scope "Emit packet-only output."
-    node $MawCli run --deployment DP-001
-    node $MawCli score --deployment DP-001
+    node $MawCli plan --text "Create a delegation packet only for a future documentation implementation." --risk low --constraint "The output is only a packet, not the final documentation."
+    node $MawCli approval record --approver "operator" --scope "Emit packet-only output."
+    node $MawCli run
+    node $MawCli score
 
 Expected artifact:
 
@@ -638,18 +644,18 @@ Orient first using the operator console:
     node $MawCli status
     node $MawCli doctor
 
-status names the active deployment and active task, surfaces blockers, and recommends a next command. doctor lists findings with concrete repair guidance and never modifies state.
+status names the active deployment and active task, surfaces blockers, and recommends a next command. doctor lists findings with concrete repair guidance and never modifies state. Both are read-only.
 
-If recoverable failures already produced a structured packet, follow the Corrective Command first and then the Then command before opening JSON files. Inspect raw state only if the console outputs do not explain the situation:
+If a recoverable failure already produced a structured packet, follow the Corrective Command first, then the Then command. Inspect raw state only if the console outputs do not explain the situation:
 
     node $MawCli report
     Get-Content state\chat.json
     Get-Content state\task_board.json
 
-Run targeted checks:
+Run targeted checks against the active deployment and task:
 
-    node $MawCli plan-check --deployment DP-001
-    node $MawCli context-check --task T-001
+    node $MawCli plan-check
+    node $MawCli context-check
 
 Common causes:
 
@@ -664,16 +670,17 @@ Common causes:
 | Model API error | Fix API key, quota, or model config |
 | Reviewer output malformed | Rerun reviewers through the task execution path |
 
-After fixing:
+After fixing, finish the workflow:
 
-    node $MawCli run --deployment DP-001 --rerun
-    node $MawCli score --deployment DP-001
-    node $MawCli retrospective --deployment DP-001
-    node $MawCli performance update --deployment DP-001
+    node $MawCli run --rerun
+    node $MawCli score
+    node $MawCli retrospective
+    node $MawCli performance update
 
 Operator decision:
 
 - Rerun intentionally. Repeated primary deliverable artifacts are counted in rerun_count.
+- If status reports execution_in_progress because a prior task is stuck running, resolve T-NNN before rerunning, or mark it failed and rerun.
 
 ## Demo 19: Validation And Expected Legacy Failures
 
