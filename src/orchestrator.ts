@@ -105,17 +105,20 @@ export async function orchestrateIntent(
   const queue = IntentQueueSchema.parse(await loadJson(root, "state/intent_queue.json"));
   const intent = queue.intents.find((entry) => entry.intent_id === input.intentId);
   if (!intent) throw new Error("Intent not found: " + (input.intentId));
-  if (intent.status !== "new") {
-    const planStorePeek = DeploymentPlanStoreSchema.parse(
-      await loadJson(root, "state/deployment_plan.json")
-    );
-    const existingDeployments = planStorePeek.deployment_plans
-      .filter((entry) => entry.intent_id === intent.intent_id)
-      .map((entry) => entry.deployment_id);
-    const existingSuffix =
-      existingDeployments.length > 0 ? " Existing deployments: " + existingDeployments.join(", ") + "." : "";
+
+  const planStore = DeploymentPlanStoreSchema.parse(
+    await loadJson(root, "state/deployment_plan.json")
+  );
+  const existingDeployments = planStore.deployment_plans
+    .filter((entry) => entry.intent_id === intent.intent_id)
+    .map((entry) => entry.deployment_id);
+  if (existingDeployments.length > 0 || intent.status !== "new") {
+    const deploymentSuffix =
+      existingDeployments.length > 0
+        ? " Existing deployments: " + existingDeployments.join(", ") + "."
+        : "";
     throw new Error(
-      "Intent " + intent.intent_id + " is already " + intent.status + " and cannot be re-orchestrated." + existingSuffix
+      "Intent " + intent.intent_id + " cannot be re-orchestrated (status: " + intent.status + ")." + deploymentSuffix
     );
   }
 
@@ -124,7 +127,6 @@ export async function orchestrateIntent(
   const client = input.modelClient ?? (await createDefaultModelClient(root));
   const model = selectModel(config, "orchestrator");
   const board = TaskBoardSchema.parse(await loadJson(root, "state/task_board.json"));
-  const planStore = DeploymentPlanStoreSchema.parse(await loadJson(root, "state/deployment_plan.json"));
   const artifactIndex = ArtifactIndexSchema.parse(await loadJson(root, "artifacts/artifact_index.json"));
   const activeRules = await loadActiveLearningRules(root, config);
   const instructions = buildOrchestratorInstructions(activeRules);

@@ -185,14 +185,14 @@ export async function buildRecoveryPacket(root: string, error: unknown): Promise
     );
   }
 
-  match = /^Intent (I-\d{3,}) is already \w+ and cannot be re-orchestrated\.( Existing deployments: .+)?$/.exec(
+  match = /^Intent (I-\d{3,}) cannot be re-orchestrated \(status: \w+\)\.( Existing deployments: .+)?$/.exec(
     message
   );
   if (match?.[1]) {
     const intentId = match[1];
     return packet(
       message,
-      intentId + " is no longer in status new, so re-orchestration would create a duplicate deployment.",
+      intentId + " already has a deployment or is past status new; re-orchestrating would create a duplicate.",
       "safe; no orchestration was run.",
       "maw status",
       "maw intent create --text \"Describe the work\""

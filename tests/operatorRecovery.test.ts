@@ -234,17 +234,45 @@ describe("operator recovery packets", () => {
     });
   });
 
-  test("re-orchestration refusal packet routes to status and intent create", async () => {
+  test("re-orchestration refusal packet matches the status-and-deployment shape", async () => {
     await withWorkspace(async (root) => {
       await initWorkspace(root);
 
       const packet = await expectPacket(
         root,
-        "Intent I-001 is already planned and cannot be re-orchestrated. Existing deployments: DP-001."
+        "Intent I-001 cannot be re-orchestrated (status: planned). Existing deployments: DP-001."
       );
 
-      expect(packet.why).toContain("re-orchestration would create a duplicate deployment");
+      expect(packet.why).toContain("create a duplicate");
       expect(packet.state_safety).toBe("safe; no orchestration was run.");
+      expect(packet.corrective_command).toBe("maw status");
+      expect(packet.next_command).toMatch(/^maw intent create/);
+    });
+  });
+
+  test("re-orchestration refusal packet matches the status-new-but-deployment-exists shape", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+
+      const packet = await expectPacket(
+        root,
+        "Intent I-001 cannot be re-orchestrated (status: new). Existing deployments: DP-001."
+      );
+
+      expect(packet.corrective_command).toBe("maw status");
+      expect(packet.next_command).toMatch(/^maw intent create/);
+    });
+  });
+
+  test("re-orchestration refusal packet matches the status-only shape (no deployments)", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+
+      const packet = await expectPacket(
+        root,
+        "Intent I-001 cannot be re-orchestrated (status: blocked)."
+      );
+
       expect(packet.corrective_command).toBe("maw status");
       expect(packet.next_command).toMatch(/^maw intent create/);
     });

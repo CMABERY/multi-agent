@@ -336,7 +336,7 @@ describe("agentic orchestrator workflow", () => {
     });
   });
 
-  test("orchestrator refuses to re-orchestrate an intent that is no longer status new", async () => {
+  test("orchestrator refuses to re-orchestrate an intent that already has a deployment", async () => {
     await withWorkspace(async (root) => {
       await initWorkspace(root);
       const intent = await createIntent(root, { text: "Build a verified demo artifact." });
@@ -348,7 +348,39 @@ describe("agentic orchestrator workflow", () => {
 
       await expect(
         orchestrateIntent(root, { intentId: intent.intent_id, modelClient })
-      ).rejects.toThrow(/^Intent I-001 is already planned and cannot be re-orchestrated\..*Existing deployments: DP-001\.$/);
+      ).rejects.toThrow(
+        /^Intent I-001 cannot be re-orchestrated \(status: planned\)\. Existing deployments: DP-001\.$/
+      );
+
+      const plans = await loadJson(root, "state/deployment_plan.json");
+      const tasks = await loadJson(root, "state/task_board.json");
+      expect(plans.deployment_plans).toHaveLength(1);
+      expect(tasks.tasks).toHaveLength(1);
+      expect(modelClient.createResponse).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  test("orchestrator refuses an intent that has a deployment even when intent.status is still new (partial-write recovery)", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+      const intent = await createIntent(root, { text: "Build a verified demo artifact." });
+      const modelClient = {
+        createResponse: vi.fn().mockResolvedValue(modelResponse(JSON.stringify(validOrchestratorPayload())))
+      };
+
+      await orchestrateIntent(root, { intentId: intent.intent_id, modelClient });
+
+      // Simulate a crash between deployment_plan write and intent_queue write:
+      // deployment exists on disk but intent.status is reset to "new".
+      const queue = await loadJson(root, "state/intent_queue.json");
+      queue.intents[0].status = "new";
+      await saveJson(root, "state/intent_queue.json", queue);
+
+      await expect(
+        orchestrateIntent(root, { intentId: intent.intent_id, modelClient })
+      ).rejects.toThrow(
+        /^Intent I-001 cannot be re-orchestrated \(status: new\)\. Existing deployments: DP-001\.$/
+      );
 
       const plans = await loadJson(root, "state/deployment_plan.json");
       const tasks = await loadJson(root, "state/task_board.json");

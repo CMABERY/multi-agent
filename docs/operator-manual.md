@@ -553,7 +553,7 @@ Command:
 
 Inputs:
 
-- --intent <intentId>: optional. Defaults to the active intent; see Active Context Defaults. orchestrate refuses any intent already in status planned, approved, running, completed, or blocked to prevent duplicate deployments.
+- --intent <intentId>: optional. Defaults to the active intent; see Active Context Defaults. orchestrate refuses any intent that already has at least one deployment in state/deployment_plan.json or whose status is no longer new, regardless of how that state arose. The error includes the intent status and any existing deployment IDs.
 
 Reads:
 
@@ -621,7 +621,7 @@ Failure handling:
 - Truncated model response: increase max_output_tokens or reduce intent complexity.
 - Unknown agent selected by model: adjust registry or rerun orchestration.
 - Max retries exhausted: inspect the final violation codes in the thrown error.
-- Already-orchestrated intent: orchestrate emits a recovery packet of the form "Intent I-001 is already planned and cannot be re-orchestrated." Inspect status, then create a new intent if more work is needed.
+- Already-orchestrated intent: orchestrate emits a recovery packet of the form "Intent I-001 cannot be re-orchestrated (status: planned). Existing deployments: DP-001." The deployment-plan check runs before the status check, so partial-write recovery (deployment persisted but intent_queue not yet updated) still refuses. Inspect status, then create a new intent if more work is needed.
 
 ### plan-check
 
