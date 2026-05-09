@@ -234,6 +234,49 @@ describe("operator recovery packets", () => {
     });
   });
 
+  test("no active deployment packet routes to status", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+
+      const packet = await expectPacket(
+        root,
+        "No active deployment. Pass --deployment <id> or run maw status to inspect deployments."
+      );
+
+      expect(packet.corrective_command).toBe("maw status");
+      expect(packet.next_command).toBe("maw next");
+      expect(packet.state_safety).toBe("safe; no command was run.");
+    });
+  });
+
+  test("no active intent packet routes to status and intent create", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+
+      const packet = await expectPacket(
+        root,
+        "No active intent. Pass --intent <id> or run maw status to inspect intents."
+      );
+
+      expect(packet.corrective_command).toBe("maw status");
+      expect(packet.next_command).toMatch(/^maw intent create/);
+    });
+  });
+
+  test("no active task packet routes to status and next", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+
+      const packet = await expectPacket(
+        root,
+        "No active task. Pass --task <id> or run maw status to inspect tasks."
+      );
+
+      expect(packet.corrective_command).toBe("maw status");
+      expect(packet.next_command).toBe("maw next");
+    });
+  });
+
   test("unknown error remains unclassified", async () => {
     await withWorkspace(async (root) => {
       await initWorkspace(root);

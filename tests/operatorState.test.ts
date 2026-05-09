@@ -3,7 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { createIntent } from "../src/orchestrator.js";
-import { readOperatorState } from "../src/operatorState.js";
+import {
+  readOperatorState,
+  resolveActiveDeploymentId,
+  resolveActiveIntentId,
+  resolveActiveTaskId
+} from "../src/operatorState.js";
 import { saveJson } from "../src/storage.js";
 import { initWorkspace } from "../src/workspace.js";
 
@@ -488,6 +493,84 @@ describe("operator state interpreter", () => {
 
       expect(state.workflow_state).toBe("complete");
       expect(state.recommended_next_command).toBe("maw report");
+    });
+  });
+});
+
+describe("active-context resolvers", () => {
+  test("resolveActiveDeploymentId returns explicit value when provided", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+      await seedDeployment(root);
+      await expect(resolveActiveDeploymentId(root, "DP-007")).resolves.toBe("DP-007");
+    });
+  });
+
+  test("resolveActiveDeploymentId falls back to active deployment when omitted", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+      await seedDeployment(root);
+      await expect(resolveActiveDeploymentId(root, undefined)).resolves.toBe("DP-001");
+      await expect(resolveActiveDeploymentId(root, "")).resolves.toBe("DP-001");
+    });
+  });
+
+  test("resolveActiveDeploymentId throws a recoverable error when no active deployment exists", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+      await expect(resolveActiveDeploymentId(root, undefined)).rejects.toThrow(/^No active deployment\./);
+    });
+  });
+
+  test("resolveActiveIntentId returns explicit value when provided", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+      await createIntent(root, { text: "Build a verified artifact." });
+      await expect(resolveActiveIntentId(root, "I-007")).resolves.toBe("I-007");
+    });
+  });
+
+  test("resolveActiveIntentId falls back to active intent when omitted", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+      await createIntent(root, { text: "Build a verified artifact." });
+      await expect(resolveActiveIntentId(root, undefined)).resolves.toBe("I-001");
+    });
+  });
+
+  test("resolveActiveIntentId throws a recoverable error when no active intent exists", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+      await expect(resolveActiveIntentId(root, undefined)).rejects.toThrow(/^No active intent\./);
+    });
+  });
+
+  test("resolveActiveTaskId returns explicit value when provided", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+      await seedDeployment(root, {
+        plan: { status: "failed" },
+        tasks: [{ status: "failed", blocker: "boom" }]
+      });
+      await expect(resolveActiveTaskId(root, "T-099")).resolves.toBe("T-099");
+    });
+  });
+
+  test("resolveActiveTaskId falls back to active task when omitted", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+      await seedDeployment(root, {
+        plan: { status: "failed" },
+        tasks: [{ status: "failed", blocker: "boom" }]
+      });
+      await expect(resolveActiveTaskId(root, undefined)).resolves.toBe("T-001");
+    });
+  });
+
+  test("resolveActiveTaskId throws a recoverable error when no active task exists", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+      await expect(resolveActiveTaskId(root, undefined)).rejects.toThrow(/^No active task\./);
     });
   });
 });

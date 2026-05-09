@@ -231,17 +231,17 @@ Default agents in a fresh workspace:
 | --- | --- | --- | --- | --- |
 | init | none | none | default workspace files | no |
 | intent create | --text | --constraint, --risk, --budget | state/intent_queue.json | no |
-| orchestrate | --intent | none | prompt contract, tasks, deployment, decisions, metrics | yes |
-| plan-check | --deployment | --json | state/plan_checks.json | no |
-| approval record | --deployment, --approver, --scope | --decision | approvals and deployment status | no |
-| run | --deployment | --execute, --rerun | task and deployment state, artifacts, metrics, reviews, consensus | depends on tasks |
-| context-check | --task | --json | state/context_checks.json | no |
-| review record | --task, --reviewer | --status, --issue | state/review_log.json | no |
-| consensus compute | --task | --json | state/consensus.json | no |
+| orchestrate | none | --intent (defaults to active), --json | prompt contract, tasks, deployment, decisions, metrics | yes |
+| plan-check | none | --deployment (defaults to active), --json | state/plan_checks.json | no |
+| approval record | --approver, --scope | --deployment (defaults to active), --decision | approvals and deployment status | no |
+| run | none | --deployment (defaults to active), --execute, --rerun | task and deployment state, artifacts, metrics, reviews, consensus | depends on tasks |
+| context-check | none | --task (defaults to active), --json | state/context_checks.json | no |
+| review record | --reviewer | --task (defaults to active), --status, --issue | state/review_log.json | no |
+| consensus compute | none | --task (defaults to active), --json | state/consensus.json | no |
 | migrate | none | none | review log and consensus | no |
-| score | --deployment | --json | state/workflow_score.json | no |
-| retrospective | --deployment | --json | retrospectives, learning memory, performance ledger | no |
-| performance update | --deployment | --json | performance ledger and agent registry | no |
+| score | none | --deployment (defaults to active), --json | state/workflow_score.json | no |
+| retrospective | none | --deployment (defaults to active), --json | retrospectives, learning memory, performance ledger | no |
+| performance update | none | --deployment (defaults to active), --json | performance ledger and agent registry | no |
 | status | none | none | none | no |
 | next | none | --reason | none | no |
 | doctor | none | none | none | no |
@@ -253,6 +253,26 @@ Default agents in a fresh workspace:
 | scaffold protocol | --name | --title, --body | protocols/<name>.md | no |
 | scaffold command | --agent-id, --command | --role, --model-tier | state/agent_registry.json | no |
 | operator metrics | none | none | none | no |
+
+## Active Context Defaults
+
+State-targeting commands accept their primary ID flag as optional. When --deployment, --intent, or --task is omitted, MAW resolves it from the operator state interpreter:
+
+- --deployment defaults to the active deployment (operator state active_deployment_id).
+- --intent defaults to the active intent (operator state active_intent_id).
+- --task defaults to the active task (operator state active_task_id).
+
+If no active context exists for the requested kind, MAW prints a recovery packet pointing at maw status:
+
+    Error: No active deployment. Pass --deployment <id> or run maw status to inspect deployments.
+    Why: the workspace has no active deployment to default to.
+    State Safety: safe; no command was run.
+    Corrective Command: maw status
+    Then: maw next
+
+Pass the explicit flag to override the default. Active-context resolution applies to: orchestrate, plan-check, run, approval record, score, retrospective, performance update, context-check, review record, and consensus compute.
+
+Operator habit: run status or next first to confirm the active deployment, intent, or task before using the implicit form. Active context comes from the same interpreter that drives status, so the two views always agree.
 
 ## Transition Guidance
 

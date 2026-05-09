@@ -583,3 +583,72 @@ describe("operator navigation commands", () => {
     });
   });
 });
+
+describe("implicit active-context defaults", () => {
+  test("plan-check without --deployment uses active deployment", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+      await seedDeployment(root, {
+        assignments: [{ agent_id: "researcher_1", executor: "model_agent" }],
+        tasks: [
+          { owner_agent_id: "researcher_1", owner_role: "Research Agent", executor: "model_agent" }
+        ]
+      });
+
+      const explicit = await runCli(root, ["plan-check", "--deployment", "DP-001"]);
+      const implicit = await runCli(root, ["plan-check"]);
+
+      expect(explicit).toContain("Plan Check");
+      expect(implicit).toContain("Plan Check");
+    });
+  });
+
+  test("approval record without --deployment uses active deployment", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+      await seedDeployment(root, {
+        assignments: [{ agent_id: "researcher_1", executor: "model_agent" }],
+        tasks: [
+          { owner_agent_id: "researcher_1", owner_role: "Research Agent", executor: "model_agent" }
+        ]
+      });
+
+      const output = await runCli(root, [
+        "approval",
+        "record",
+        "--approver",
+        "operator",
+        "--scope",
+        "Run DP-001 after plan-check review."
+      ]);
+
+      expect(output).toContain("Recorded approval AP-001.");
+    });
+  });
+
+  test("score without --deployment uses active deployment", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+      await seedDeployment(root, {
+        plan: { status: "completed" },
+        tasks: [{ status: "completed", review_required: false }]
+      });
+
+      const output = await runCli(root, ["score"]);
+
+      expect(output).toContain("Workflow Score WS-001");
+    });
+  });
+
+  test("plan-check without --deployment and no active deployment surfaces a recoverable error", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+      const errSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      try {
+        await expect(runCli(root, ["plan-check"])).rejects.toThrow(/No active deployment/);
+      } finally {
+        errSpy.mockRestore();
+      }
+    });
+  });
+});

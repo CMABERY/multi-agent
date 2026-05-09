@@ -10,7 +10,15 @@ import {
   renderOperatorExperienceReport
 } from "./operatorExperience.js";
 import { renderCurrentTransitionGuidance } from "./operatorGuidance.js";
-import { readOperatorState, type OperatorCondition, type OperatorReadiness, type OperatorState } from "./operatorState.js";
+import {
+  readOperatorState,
+  resolveActiveDeploymentId,
+  resolveActiveIntentId,
+  resolveActiveTaskId,
+  type OperatorCondition,
+  type OperatorReadiness,
+  type OperatorState
+} from "./operatorState.js";
 import { createIntent, orchestrateIntent } from "./orchestrator.js";
 import { updateAgentPerformance } from "./performance.js";
 import { runPlanCheck } from "./planCheck.js";
@@ -83,10 +91,11 @@ export function createCli(root = process.cwd()): Command {
 
   program
     .command("orchestrate")
-    .requiredOption("--intent <intentId>", "Intent id such as I-001")
+    .option("--intent <intentId>", "Intent id such as I-001; defaults to the active intent")
     .description("Ask the orchestrator agent to create a contract, task graph, and deployment plan")
-    .action(async (options: { intent: string }) => {
-      const result = await orchestrateIntent(root, { intentId: options.intent });
+    .action(async (options: { intent?: string }) => {
+      const intentId = await resolveActiveIntentId(root, options.intent);
+      const result = await orchestrateIntent(root, { intentId });
       console.log("Created deployment " + (result.deployment_id) + " with tasks " + (result.task_ids.join(", ")) + ".");
       await printTransitionGuidance(root);
     });
@@ -94,19 +103,20 @@ export function createCli(root = process.cwd()): Command {
   const approval = program.command("approval").description("Record human approval decisions");
   approval
     .command("record")
-    .requiredOption("--deployment <deploymentId>", "Deployment id such as DP-001")
+    .option("--deployment <deploymentId>", "Deployment id such as DP-001; defaults to the active deployment")
     .requiredOption("--approver <name>", "Approver name")
     .requiredOption("--scope <scope>", "Exact approved or rejected scope")
     .option("--decision <decision>", "approved or rejected", "approved")
     .action(
       async (options: {
-        deployment: string;
+        deployment?: string;
         approver: string;
         scope: string;
         decision: "approved" | "rejected";
       }) => {
+        const deploymentId = await resolveActiveDeploymentId(root, options.deployment);
         const approvalRecord = await recordApproval(root, {
-          deploymentId: options.deployment,
+          deploymentId,
           approver: options.approver,
           decision: options.decision,
           scope: options.scope
@@ -119,17 +129,18 @@ export function createCli(root = process.cwd()): Command {
   const review = program.command("review").description("Record independent task reviews");
   review
     .command("record")
-    .requiredOption("--task <taskId>", "Task id such as T-001")
+    .option("--task <taskId>", "Task id such as T-001; defaults to the active task")
     .requiredOption("--reviewer <reviewer>", "Reviewer id or name")
     .option("--status <status>", "pass or fail", "pass")
     .option("--issue <issue...>", "Issue text to record for fail reviews")
     .action(
       async (options: {
-        task: string;
+        task?: string;
         reviewer: string;
         status: "pass" | "fail";
         issue?: string[];
       }) => {
+        const taskId = await resolveActiveTaskId(root, options.task);
         const issues = (options.issue ?? []).map((issue, index) => ({
           issue_id: "I-" + (String(index + 1).padStart(3, "0")),
           severity: "medium" as const,
@@ -139,7 +150,7 @@ export function createCli(root = process.cwd()): Command {
           recommended_fix: "Address the recorded review issue and recheck."
         }));
         const reviewRecord = await recordReview(root, {
-          taskId: options.task,
+          taskId,
           reviewer: options.reviewer,
           status: options.status,
           issues,
@@ -154,10 +165,11 @@ export function createCli(root = process.cwd()): Command {
   const consensus = program.command("consensus").description("Compute multi-reviewer consensus");
   consensus
     .command("compute")
-    .requiredOption("--task <taskId>", "Task id such as T-001")
+    .option("--task <taskId>", "Task id such as T-001; defaults to the active task")
     .option("--json", "Print machine-readable JSON")
-    .action(async (options: { task: string; json?: boolean }) => {
-      const record = await computeConsensus(root, { taskId: options.task });
+    .action(async (options: { task?: string; json?: boolean }) => {
+      const taskId = await resolveActiveTaskId(root, options.task);
+      const record = await computeConsensus(root, { taskId });
       if (options.json) {
         console.log(JSON.stringify(record, null, 2));
         return;
@@ -177,13 +189,14 @@ export function createCli(root = process.cwd()): Command {
 
   program
     .command("run")
-    .requiredOption("--deployment <deploymentId>", "Deployment id such as DP-001")
+    .option("--deployment <deploymentId>", "Deployment id such as DP-001; defaults to the active deployment")
     .option("--execute", "Allow approved local-command adapters to execute")
     .option("--rerun", "Explicitly rerun a completed or failed deployment")
     .description("Run an approved deployment plan")
-    .action(async (options: { deployment: string; execute?: boolean; rerun?: boolean }) => {
+    .action(async (options: { deployment?: string; execute?: boolean; rerun?: boolean }) => {
+      const deploymentId = await resolveActiveDeploymentId(root, options.deployment);
       const result = await runDeployment(root, {
-        deploymentId: options.deployment,
+        deploymentId,
         execute: Boolean(options.execute),
         rerun: Boolean(options.rerun)
       });
@@ -208,11 +221,12 @@ export function createCli(root = process.cwd()): Command {
 
   program
     .command("score")
-    .requiredOption("--deployment <deploymentId>", "Deployment id such as DP-001")
+    .option("--deployment <deploymentId>", "Deployment id such as DP-001; defaults to the active deployment")
     .option("--json", "Print machine-readable JSON")
     .description("Compute workflow intelligence yield for a deployment")
-    .action(async (options: { deployment: string; json?: boolean }) => {
-      const score = await writeWorkflowScore(root, { deploymentId: options.deployment });
+    .action(async (options: { deployment?: string; json?: boolean }) => {
+      const deploymentId = await resolveActiveDeploymentId(root, options.deployment);
+      const score = await writeWorkflowScore(root, { deploymentId });
       if (options.json) {
         console.log(JSON.stringify(score, null, 2));
         return;
@@ -230,11 +244,12 @@ export function createCli(root = process.cwd()): Command {
 
   program
     .command("plan-check")
-    .requiredOption("--deployment <deploymentId>", "Deployment id such as DP-001")
+    .option("--deployment <deploymentId>", "Deployment id such as DP-001; defaults to the active deployment")
     .option("--json", "Print machine-readable JSON")
     .description("Check a deployment plan before approval or execution")
-    .action(async (options: { deployment: string; json?: boolean }) => {
-      const check = await runPlanCheck(root, { deploymentId: options.deployment });
+    .action(async (options: { deployment?: string; json?: boolean }) => {
+      const deploymentId = await resolveActiveDeploymentId(root, options.deployment);
+      const check = await runPlanCheck(root, { deploymentId });
       if (options.json) {
         console.log(JSON.stringify(check, null, 2));
       } else {
@@ -250,11 +265,12 @@ export function createCli(root = process.cwd()): Command {
 
   program
     .command("context-check")
-    .requiredOption("--task <taskId>", "Task id such as T-007")
+    .option("--task <taskId>", "Task id such as T-007; defaults to the active task")
     .option("--json", "Print machine-readable JSON")
     .description("Check whether a task has sufficient scoped context")
-    .action(async (options: { task: string; json?: boolean }) => {
-      const check = await runContextCheck(root, { taskId: options.task });
+    .action(async (options: { task?: string; json?: boolean }) => {
+      const taskId = await resolveActiveTaskId(root, options.task);
+      const check = await runContextCheck(root, { taskId });
       if (options.json) {
         console.log(JSON.stringify(check, null, 2));
       } else {
@@ -270,11 +286,12 @@ export function createCli(root = process.cwd()): Command {
 
   program
     .command("retrospective")
-    .requiredOption("--deployment <deploymentId>", "Deployment id such as DP-001")
+    .option("--deployment <deploymentId>", "Deployment id such as DP-001; defaults to the active deployment")
     .option("--json", "Print machine-readable JSON")
     .description("Generate a deterministic retrospective and update learning memory")
-    .action(async (options: { deployment: string; json?: boolean }) => {
-      const retrospective = await runRetrospective(root, { deploymentId: options.deployment });
+    .action(async (options: { deployment?: string; json?: boolean }) => {
+      const deploymentId = await resolveActiveDeploymentId(root, options.deployment);
+      const retrospective = await runRetrospective(root, { deploymentId });
       if (options.json) {
         console.log(JSON.stringify(retrospective, null, 2));
         return;
@@ -288,11 +305,12 @@ export function createCli(root = process.cwd()): Command {
   const performance = program.command("performance").description("Manage agent performance memory");
   performance
     .command("update")
-    .requiredOption("--deployment <deploymentId>", "Deployment id such as DP-001")
+    .option("--deployment <deploymentId>", "Deployment id such as DP-001; defaults to the active deployment")
     .option("--json", "Print machine-readable JSON")
     .description("Update agent/executor performance stats from a deployment")
-    .action(async (options: { deployment: string; json?: boolean }) => {
-      const agents = await updateAgentPerformance(root, { deploymentId: options.deployment });
+    .action(async (options: { deployment?: string; json?: boolean }) => {
+      const deploymentId = await resolveActiveDeploymentId(root, options.deployment);
+      const agents = await updateAgentPerformance(root, { deploymentId });
       if (options.json) {
         console.log(JSON.stringify({ agents }, null, 2));
         return;

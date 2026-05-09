@@ -185,6 +185,39 @@ export async function buildRecoveryPacket(root: string, error: unknown): Promise
     );
   }
 
+  match = /^No active deployment\. /.exec(message);
+  if (match) {
+    return packet(
+      message,
+      "the workspace has no active deployment to default to.",
+      "safe; no command was run.",
+      "maw status",
+      "maw next"
+    );
+  }
+
+  match = /^No active intent\. /.exec(message);
+  if (match) {
+    return packet(
+      message,
+      "the workspace has no active intent to default to.",
+      "safe; no command was run.",
+      "maw status",
+      "maw intent create --text \"Describe the work\""
+    );
+  }
+
+  match = /^No active task\. /.exec(message);
+  if (match) {
+    return packet(
+      message,
+      "the workspace has no active task to default to.",
+      "safe; no command was run.",
+      "maw status",
+      "maw next"
+    );
+  }
+
   match = /^Orchestrator could not produce a valid plan after \d+ retries\. Final violations: .+$/.exec(message);
   if (match) {
     return packet(

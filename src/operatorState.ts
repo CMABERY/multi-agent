@@ -155,6 +155,42 @@ const storeSpecs: { [K in keyof Stores]: StoreSpec<Stores[K]> } = {
 
 const activeDeploymentStatuses = new Set(["running", "failed", "blocked", "approved", "proposed"]);
 
+export async function resolveActiveDeploymentId(
+  root: string,
+  explicit: string | undefined
+): Promise<string> {
+  if (typeof explicit === "string" && explicit.trim().length > 0) return explicit.trim();
+  const state = await readOperatorState(root);
+  if (state.active_deployment_id) return state.active_deployment_id;
+  throw new Error(
+    "No active deployment. Pass --deployment <id> or run maw status to inspect deployments."
+  );
+}
+
+export async function resolveActiveIntentId(
+  root: string,
+  explicit: string | undefined
+): Promise<string> {
+  if (typeof explicit === "string" && explicit.trim().length > 0) return explicit.trim();
+  const state = await readOperatorState(root);
+  if (state.active_intent_id) return state.active_intent_id;
+  throw new Error(
+    "No active intent. Pass --intent <id> or run maw status to inspect intents."
+  );
+}
+
+export async function resolveActiveTaskId(
+  root: string,
+  explicit: string | undefined
+): Promise<string> {
+  if (typeof explicit === "string" && explicit.trim().length > 0) return explicit.trim();
+  const state = await readOperatorState(root);
+  if (state.active_task_id) return state.active_task_id;
+  throw new Error(
+    "No active task. Pass --task <id> or run maw status to inspect tasks."
+  );
+}
+
 export async function readOperatorState(root: string): Promise<OperatorState> {
   const loaded = await loadStores(root);
   if (loaded.kind === "uninitialized") {
