@@ -79,7 +79,7 @@ export function createCli(root = process.cwd()): Command {
     .option("--constraint <constraint...>", "Constraint to add")
     .option("--risk <risk>", "Risk level: low, medium, high", "medium")
     .option("--budget <budget>", "Budget description")
-    .action(async (options: { text: string; constraint?: string[]; risk: "low" | "medium" | "high"; budget?: string }) => {
+    .action(async (options: { text: string; constraint?: string[]; risk: string; budget?: string }) => {
       const created = await createIntent(root, {
         text: options.text,
         constraints: options.constraint ?? [],
@@ -115,7 +115,7 @@ export function createCli(root = process.cwd()): Command {
       async (options: {
         text: string;
         constraint?: string[];
-        risk: "low" | "medium" | "high";
+        risk: string;
         budget?: string;
         json?: boolean;
       }) => {

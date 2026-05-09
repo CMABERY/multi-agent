@@ -10,6 +10,7 @@ import {
   IntentQueueSchema,
   LearningMemorySchema,
   OrchestratorOutputSchema,
+  RiskLevelSchema,
   TaskBoardSchema,
   type AgentRegistry,
   type DeploymentAssignment,
@@ -71,10 +72,21 @@ export async function createIntent(
   input: {
     text: string;
     constraints?: string[];
-    riskLevel?: "low" | "medium" | "high";
+    riskLevel?: string;
     budget?: string;
   }
 ): Promise<Intent> {
+  const text = typeof input.text === "string" ? input.text.trim() : "";
+  if (!text) throw new Error("Intent text must be non-empty.");
+
+  const riskLevelRaw = input.riskLevel ?? "medium";
+  const riskParse = RiskLevelSchema.safeParse(riskLevelRaw);
+  if (!riskParse.success) {
+    throw new Error(
+      "Invalid risk level: " + riskLevelRaw + ". Must be low, medium, or high."
+    );
+  }
+
   const queue = IntentQueueSchema.parse(await loadJson(root, "state/intent_queue.json"));
   const now = nowIso();
   const intent: Intent = {
@@ -82,9 +94,9 @@ export async function createIntent(
       "I",
       queue.intents.map((entry) => entry.intent_id)
     ),
-    text: input.text,
+    text,
     constraints: input.constraints ?? [],
-    risk_level: input.riskLevel ?? "medium",
+    risk_level: riskParse.data,
     budget: input.budget,
     status: "new",
     created_at: now,

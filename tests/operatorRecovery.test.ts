@@ -234,6 +234,33 @@ describe("operator recovery packets", () => {
     });
   });
 
+  test("invalid risk level packet routes to status with a corrected example", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+
+      const packet = await expectPacket(
+        root,
+        "Invalid risk level: bogus. Must be low, medium, or high."
+      );
+
+      expect(packet.state_safety).toBe("safe; no intent was written.");
+      expect(packet.corrective_command).toBe("maw status");
+      expect(packet.next_command).toMatch(/--risk medium/);
+    });
+  });
+
+  test("empty-text intent packet routes to status with a corrected example", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+
+      const packet = await expectPacket(root, "Intent text must be non-empty.");
+
+      expect(packet.state_safety).toBe("safe; no intent was written.");
+      expect(packet.corrective_command).toBe("maw status");
+      expect(packet.next_command).toMatch(/^maw intent create/);
+    });
+  });
+
   test("re-orchestration refusal packet matches the status-and-deployment shape", async () => {
     await withWorkspace(async (root) => {
       await initWorkspace(root);

@@ -172,6 +172,26 @@ describe("runAutoPlan", () => {
     });
   });
 
+  test("rejects invalid risk level before writing any intent", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+      const before = await loadJson(root, "state/intent_queue.json");
+      const modelClient = {
+        createResponse: vi
+          .fn()
+          .mockResolvedValue(modelResponse(JSON.stringify(validOrchestratorPayload())))
+      };
+
+      await expect(
+        runAutoPlan(root, { text: "Test", riskLevel: "bogus" }, { modelClient })
+      ).rejects.toThrow(/^Invalid risk level: bogus\. Must be low, medium, or high\.$/);
+
+      const after = await loadJson(root, "state/intent_queue.json");
+      expect(after).toEqual(before);
+      expect(modelClient.createResponse).not.toHaveBeenCalled();
+    });
+  });
+
   test("renderAutoPlanResult prints intent, deployment, task, and plan-check lines", async () => {
     const rendered = renderAutoPlanResult({
       intent_id: "I-001",

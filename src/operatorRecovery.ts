@@ -185,6 +185,28 @@ export async function buildRecoveryPacket(root: string, error: unknown): Promise
     );
   }
 
+  match = /^Invalid risk level: .+\. Must be low, medium, or high\.$/.exec(message);
+  if (match) {
+    return packet(
+      message,
+      "the supplied --risk value is not in the allowed set.",
+      "safe; no intent was written.",
+      "maw status",
+      "maw intent create --text \"Describe the work\" --risk medium"
+    );
+  }
+
+  match = /^Intent text must be non-empty\.$/.exec(message);
+  if (match) {
+    return packet(
+      message,
+      "intent create requires a non-empty --text value.",
+      "safe; no intent was written.",
+      "maw status",
+      "maw intent create --text \"Describe the work\""
+    );
+  }
+
   match = /^Intent (I-\d{3,}) cannot be re-orchestrated \(status: \w+\)\.( Existing deployments: .+)?$/.exec(
     message
   );

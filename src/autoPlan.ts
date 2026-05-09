@@ -13,7 +13,7 @@ export interface AutoPlanStep {
 export interface AutoPlanInput {
   text: string;
   constraints?: string[];
-  riskLevel?: "low" | "medium" | "high";
+  riskLevel?: string;
   budget?: string;
 }
 

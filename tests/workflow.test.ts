@@ -336,6 +336,34 @@ describe("agentic orchestrator workflow", () => {
     });
   });
 
+  test("createIntent rejects invalid risk level before writing the intent queue", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+      const before = await loadJson(root, "state/intent_queue.json");
+
+      await expect(
+        createIntent(root, { text: "Test", riskLevel: "bogus" })
+      ).rejects.toThrow(/^Invalid risk level: bogus\. Must be low, medium, or high\.$/);
+
+      const after = await loadJson(root, "state/intent_queue.json");
+      expect(after).toEqual(before);
+    });
+  });
+
+  test("createIntent rejects empty text before writing the intent queue", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+      const before = await loadJson(root, "state/intent_queue.json");
+
+      await expect(createIntent(root, { text: "   " })).rejects.toThrow(
+        /^Intent text must be non-empty\.$/
+      );
+
+      const after = await loadJson(root, "state/intent_queue.json");
+      expect(after).toEqual(before);
+    });
+  });
+
   test("orchestrator refuses to re-orchestrate an intent that already has a deployment", async () => {
     await withWorkspace(async (root) => {
       await initWorkspace(root);
