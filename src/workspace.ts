@@ -30,6 +30,14 @@ export async function initWorkspace(root: string): Promise<void> {
     "artifacts/research_briefs",
     "artifacts/screenshots",
     "state/retrospectives",
+    "state/grader_descriptors",
+    "state/grader_outputs/reviewer_calibration",
+    "state/grader_outputs/acceptance_criteria",
+    "state/grader_outputs/intent",
+    "state/grader_outputs/review_reasoning",
+    "state/grader_outputs/output_quality",
+    "state/calibration",
+    "state/probation",
     "protocols",
     "instructions"
   ]) {
@@ -62,6 +70,8 @@ export async function initWorkspace(root: string): Promise<void> {
   await saveJsonIfMissing(root, "state/operator_experience.json", defaultOperatorExperience(nowIso()));
   await saveJsonIfMissing(root, "state/permission_audit.json", { events: [] });
   await saveJsonIfMissing(root, "state/transactions.json", { transactions: [] });
+  await saveJsonIfMissing(root, "state/grader_registry.json", { entries: [] });
+  await saveJsonIfMissing(root, "state/probation/probation_log.json", { records: [] });
   await saveJsonIfMissing(root, "artifacts/artifact_index.json", { artifacts: [] });
 
   await writeIfMissing(
