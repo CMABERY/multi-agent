@@ -5,6 +5,7 @@ import {
   type DeploymentPlan
 } from "./schemas.js";
 import { nextId } from "./ids.js";
+import { requireCurrentPassingPlanCheck } from "./planCheck.js";
 import { loadJson, nowIso, saveJson } from "./storage.js";
 
 export async function recordApproval(
@@ -20,6 +21,9 @@ export async function recordApproval(
   const plans = DeploymentPlanStoreSchema.parse(await loadJson(root, "state/deployment_plan.json"));
   const plan = plans.deployment_plans.find((entry) => entry.deployment_id === input.deploymentId);
   if (!plan) throw new Error("Deployment not found: " + (input.deploymentId));
+  if (input.decision === "approved") {
+    await requireCurrentPassingPlanCheck(root, plan, "approval");
+  }
 
   const now = nowIso();
   const approval: Approval = {

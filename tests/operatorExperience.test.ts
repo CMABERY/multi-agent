@@ -499,6 +499,7 @@ describe("operator experience CLI integration", () => {
       await runCli(root, ["init"]);
       await runCli(root, ["intent", "create", "--text", "Build a verified artifact."]);
       await seedDeployment(root, { plan: { status: "approved", approval_required: false } });
+      await runCli(root, ["plan-check", "--deployment", "DP-001"]);
       await runCli(root, ["run", "--deployment", "DP-001"]);
       const experience = await readExperience(root);
       expect(experience.first_successful_deployment_at).not.toBeNull();

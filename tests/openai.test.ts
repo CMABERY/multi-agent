@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { OpenAIResponsesClient } from "../src/openai.js";
+import { runPlanCheck } from "../src/planCheck.js";
 import { runDeployment } from "../src/runner.js";
 import type { ModelConfig } from "../src/schemas.js";
 import { loadJson, saveJson } from "../src/storage.js";
@@ -278,6 +279,7 @@ describe("OpenAIResponsesClient", () => {
         })
       };
 
+      await runPlanCheck(root, { deploymentId: "DP-001" });
       await runDeployment(root, { deploymentId: "DP-001", modelClient });
 
       const log = await loadJson(root, "state/review_log.json");
@@ -375,6 +377,7 @@ describe("OpenAIResponsesClient", () => {
         })
       };
 
+      await runPlanCheck(root, { deploymentId: "DP-001" });
       await runDeployment(root, { deploymentId: "DP-001", modelClient });
 
       const log = await loadJson(root, "state/review_log.json");
