@@ -2,6 +2,8 @@
 
 MAW is a local, file-backed TypeScript Node CLI for auditable multi-agent workflows. It turns operator intent into structured plans, approval gates, task execution records, review evidence, consensus, scores, retrospectives, performance memory, and handoff reports.
 
+MAW is also a state-aware operator console. Beyond running the workflow, it tells the operator where they are, what is blocked or stale, what command to run next, how to recover from expected failures, and how to extend the system safely. It records local operator-experience metrics so friction in the console itself is inspectable.
+
 The project is intentionally local-first. Commands operate on the current working directory, source remains in git, and live workflow data stays in ignored runtime folders.
 
 ## Current Repository State
@@ -9,7 +11,7 @@ The project is intentionally local-first. Commands operate on the current workin
 - Repository path: C:\Multi-Agent
 - Branch: master
 - Remote: origin https://github.com/CMABERY/multi-agent
-- Current verified release HEAD: 6d68de0 chore: expand bootstrap continuity architecture
+- Current verified release HEAD: 2d7017f feat: add state-aware operator console
 - Package: maw 0.1.0
 - Runtime: Node.js 20 or newer
 - Language: TypeScript with ECMAScript modules
@@ -36,6 +38,12 @@ Initialize and validate a workspace:
 
     node dist/src/index.js init
     node dist/src/index.js validate
+
+Orient before choosing the next operation:
+
+    node dist/src/index.js status
+    node dist/src/index.js next
+    node dist/src/index.js doctor
 
 Inspect CLI help:
 
@@ -77,7 +85,7 @@ Representative command flow:
 
 ## Capability Map
 
-MAW currently provides:
+Workflow capabilities:
 
 - Local workspace initialization and seed templates.
 - Intent capture with risk, constraints, and budget metadata.
@@ -94,7 +102,16 @@ MAW currently provides:
 - Retrospectives that turn defects into learning memory.
 - Performance memory for future routing decisions.
 - Markdown reporting for handoff.
-- Bootstrap readiness packets with continuity, counter-context, posture, and architecture metadata.
+
+Operator console capabilities:
+
+- State-aware status and next-command recommendations from a deterministic workflow-state interpreter.
+- doctor diagnostics that flag setup, environment, and workflow issues without modifying state.
+- Transition guidance appended to successful human-readable commands so operators see workflow state and next command without inspecting JSON.
+- Structured recovery packets for known recoverable failures, with Error, Why, State Safety, Corrective Command, and Then.
+- Sanctioned scaffold paths for agents, reviewers, protocols, and local-command execution profiles, with rollback guidance and refusal of unsafe inputs.
+- Local operator-experience metrics that record normalized command families, outcomes, and friction signals without storing raw user text.
+- Bootstrap readiness packets with continuity, counter-context, posture, and architecture metadata. Bootstrap remains readiness and governance, not a dashboard.
 
 ## Documentation
 
@@ -134,6 +151,16 @@ Core runtime modules:
 - src/validator.ts: state validation.
 - src/storage.ts: JSON and text persistence helpers.
 
+Operator console modules:
+
+- src/operatorState.ts: deterministic workflow-state interpreter; read-only.
+- src/operatorDoctor.ts: read-only diagnostic findings and repair guidance.
+- src/operatorGuidance.ts: transition guidance renderer for successful commands.
+- src/operatorRecovery.ts: structured recovery packets for known recoverable failures.
+- src/scaffold.ts: sanctioned extension scaffolds for agents, reviewers, protocols, and local-command profiles.
+- src/operatorExperience.ts: local operator-experience metrics, command-family classification, and report rendering.
+- src/operatorEntrypoint.ts: CLI wrapper that classifies the invocation, preserves recovery behavior, and records best-effort metrics.
+
 ## Model And Execution Boundaries
 
 Commands that can call a model:
@@ -158,6 +185,11 @@ Commands that do not require a model key:
 - performance update
 - report
 - bootstrap
+- status
+- next
+- doctor
+- scaffold agent, scaffold reviewer, scaffold protocol, scaffold command
+- operator metrics
 
 Local command execution requires:
 
@@ -203,7 +235,18 @@ Runtime status check:
 
 ## Current Release Baseline
 
-Completed and released:
+Current release: 2d7017f feat: add state-aware operator console.
+
+Released in this baseline:
+
+- Operator state interpreter and status, next, and doctor commands.
+- Transition guidance appended to successful human-readable commands.
+- Structured recovery packets for known recoverable failures, with bare-message fallback for unknown errors.
+- Sanctioned scaffold paths for agent, reviewer, protocol, and local-command profile extensions.
+- Local operator-experience metrics with normalized command families and no raw user text.
+- Schema and workspace updates to seed state/operator_experience.json on init.
+
+Earlier completed work still in effect:
 
 - Bootstrap git status cap semantics fix.
 - Repository-wide removal of literal grave accent characters from tracked files.

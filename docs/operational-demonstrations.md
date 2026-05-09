@@ -51,6 +51,11 @@ State-only demonstrations do not need an API key:
 - validate
 - report
 - bootstrap
+- status
+- next
+- doctor
+- scaffold agent, scaffold reviewer, scaffold protocol, scaffold command
+- operator metrics
 
 ## Demo Index
 
@@ -77,6 +82,10 @@ State-only demonstrations do not need an API key:
 | Validation and expected legacy failures | Demo 19 |
 | Operator handoff package | Demo 20 |
 | Bootstrap session readiness | Demo 21 |
+| Operator orientation with status, next, doctor | Demo 22 |
+| Structured recovery packet | Demo 23 |
+| Safe extension with scaffold | Demo 24 |
+| Operator experience metrics | Demo 25 |
 
 ## Demo 1: Complete Typical Workflow
 
@@ -100,13 +109,13 @@ Run:
 
 Expected result:
 
-- init prints Initialized multi-agent workflow workspace.
-- intent create prints I-001.
-- orchestrate prints a created deployment such as DP-001 with task IDs.
-- plan-check has no high-severity issues before approval.
-- approval record prints AP-001.
-- run prints completed task IDs or records blockers for failures.
-- score, retrospective, performance update, validate, and report complete the run evidence.
+- init prints Initialized multi-agent workflow workspace, then transition guidance with workflow state idle and a recommended next command.
+- intent create prints Created intent I-001 followed by transition guidance pointing at maw orchestrate --intent I-001.
+- orchestrate prints a created deployment such as DP-001 with task IDs and transition guidance pointing at the next plan check.
+- plan-check has no high-severity issues before approval and prints transition guidance.
+- approval record prints Recorded approval AP-001 followed by transition guidance.
+- run prints completed task IDs or failed task IDs and transition guidance; failed runs route the operator to maw doctor.
+- score, retrospective, performance update, validate, and report complete the run evidence; non-JSON commands append transition guidance, while report stays a pure handoff payload.
 
 Operator decision:
 
@@ -177,9 +186,13 @@ Run before approval:
 
     node $MawCli run --deployment DP-001
 
-Expected failure:
+Expected failure renders a structured recovery packet:
 
-    Deployment DP-001 requires explicit approval before execution.
+    Error: Deployment DP-001 requires explicit approval before execution.
+    Why: DP-001 requires approval and no approved approval record exists.
+    State Safety: safe; execution did not start.
+    Corrective Command: maw plan-check --deployment DP-001
+    Then: maw approval record --deployment DP-001 --approver "operator" --scope "Run DP-001 after plan-check review."
 
 Approve:
 
@@ -620,7 +633,14 @@ Useful inspections:
 
 Purpose: recover from a failed run without losing audit trail.
 
-Inspect status:
+Orient first using the operator console:
+
+    node $MawCli status
+    node $MawCli doctor
+
+status names the active deployment and active task, surfaces blockers, and recommends a next command. doctor lists findings with concrete repair guidance and never modifies state.
+
+If recoverable failures already produced a structured packet, follow the Corrective Command first and then the Then command before opening JSON files. Inspect raw state only if the console outputs do not explain the situation:
 
     node $MawCli report
     Get-Content state\chat.json
@@ -749,7 +769,138 @@ Operator decision:
 - Do not treat bootstrap as full static analysis.
 - If governed appears for architecture or risky work, inspect posture_reasons for the governed promotion marker and original wide_scan reasons.
 
+## Demo 22: Operator Orientation With status, next, doctor
+
+Purpose: understand current workspace state without inspecting JSON.
+
+Run:
+
+    node $MawCli status
+    node $MawCli next
+    node $MawCli next --reason
+    node $MawCli doctor
+
+Expected result:
+
+- status renders workflow state, active intent/deployment/task, readiness flags using yes and no, blockers, stale conditions, risky conditions, and a single recommended next command with a one-line reason.
+- next prints exactly one command and nothing else.
+- next --reason prints the same command followed by a Reason line.
+- doctor prints Doctor Summary, workflow state, findings with repair guidance, State Safety, and a recommended next command. doctor never modifies state.
+
+Operator decision:
+
+- Use status for orientation.
+- Use next when scripting a handoff or when you only want the next command.
+- Use doctor when status or next routes you there, when a workflow is blocked or failed, or when you need a safe repair path.
+
+## Demo 23: Structured Recovery Packet
+
+Purpose: read and act on the recoverable-failure packet shape.
+
+Trigger a safe recoverable failure such as running a deployment that requires approval before approving it:
+
+    node $MawCli run --deployment DP-001
+
+Expected packet shape:
+
+    Error: Deployment DP-001 requires explicit approval before execution.
+    Why: DP-001 requires approval and no approved approval record exists.
+    State Safety: safe; execution did not start.
+    Corrective Command: maw plan-check --deployment DP-001
+    Then: maw approval record --deployment DP-001 --approver "operator" --scope "Run DP-001 after plan-check review."
+
+Operator decision:
+
+- Run the Corrective Command first.
+- Then run the Then command.
+- Run status afterward to confirm the workflow state advanced.
+- For unknown errors, MAW prints a concise message and does not invent recovery advice. Inspect status, doctor, and the relevant state files instead.
+
+## Demo 24: Safe Extension With scaffold
+
+Purpose: extend MAW through sanctioned scaffold paths instead of hand-editing JSON or generating CLI source.
+
+Run:
+
+    node $MawCli scaffold reviewer --id reviewer_adversarial --persona adversarial
+    node $MawCli scaffold protocol --name release-checklist --title "Release Checklist"
+    node $MawCli scaffold command --agent-id shell_node --command node
+
+Expected result:
+
+- scaffold reviewer adds a Reviewer Agent to state/agent_registry.json with reviewer_persona adversarial and permissions all false.
+- scaffold protocol writes protocols/release-checklist.md with Purpose, Required Inputs, Steps, Acceptance Criteria, and Rollback sections. It does not overwrite an existing file.
+- scaffold command adds a local-command execution profile to state/agent_registry.json. The output reminds the operator that local execution still requires deployment approval and run --execute.
+- Each scaffold output includes Changed, Rollback, Next, and Reason.
+
+Refusal example:
+
+    node $MawCli scaffold agent --id model_bad --role "Research Agent" --executor model_agent --allow-command node
+
+Expected: refusal with the message that --allow-command is only valid for the local_command executor. The registry remains unchanged.
+
+Operator decision:
+
+- Use scaffold paths instead of editing state files by hand.
+- Treat refusal output as the safety contract working, not as an error to bypass.
+- Roll a scaffold back by following the Rollback line in its output.
+
+## Demo 25: Operator Experience Metrics
+
+Purpose: inspect local friction signals for the operator console.
+
+Run:
+
+    node $MawCli operator metrics
+
+Expected output labels:
+
+    Operator Experience Metrics
+    Command Attempts:
+    Next-Step Coverage:
+    Invalid Command Rate:
+    Help Invocation Rate:
+    Successful Error Recovery Rate:
+    Extension Success Rate:
+    Time To First Successful Workflow:
+    Commands Before Successful Deployment:
+
+Operator decision:
+
+- Read metrics to find friction in the console itself, such as a low next-step coverage or a high invalid-command rate.
+- Do not interpret metrics as a productivity score for the human operator.
+- Metrics are local only. They live in state/operator_experience.json and never store raw argv, intent text, approval scope, or any free-form user text.
+- The metrics command does not record itself, so reading metrics never changes metrics.
+
 ## Situation Reference
+
+### When You Need Orientation
+
+Check:
+
+    node $MawCli status
+    node $MawCli next --reason
+    node $MawCli doctor
+
+Action:
+
+- Use status for the full state summary including blockers, stale, and risky conditions.
+- Use next when you only want the recommended command.
+- Use doctor when a workflow is blocked or failed.
+- All three are read-only and never modify state.
+
+### When A Recoverable Failure Renders A Packet
+
+Check:
+
+- The Error and Why lines for the cause.
+- The State Safety line to confirm what did or did not run.
+
+Action:
+
+- Run the Corrective Command first, then the Then command.
+- Run status afterward.
+- For unclassified errors, MAW prints only the concise message; orient with status and doctor before changing state.
 
 ### When orchestrate Fails
 
@@ -874,6 +1025,7 @@ Action:
 
 Before approving:
 
+    node $MawCli status
     node $MawCli bootstrap --work-type ordinary
     node $MawCli plan-check --deployment DP-001
     node $MawCli context-check --task T-001

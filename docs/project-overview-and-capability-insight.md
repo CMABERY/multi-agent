@@ -6,7 +6,7 @@ For command syntax, use [operator-manual.md](operator-manual.md). For scenario p
 
 ## Product Identity
 
-MAW is a local, file-backed multi-agent workflow runtime. It is implemented as a TypeScript Node CLI and stores workflow evidence in local JSON and Markdown files.
+MAW is a local, file-backed multi-agent workflow runtime, exposed as a state-aware operator console over that workflow ledger. It is implemented as a TypeScript Node CLI and stores workflow evidence in local JSON and Markdown files.
 
 The product goal is not to make agentic work invisible. The goal is to make it inspectable:
 
@@ -19,7 +19,7 @@ The product goal is not to make agentic work invisible. The goal is to make it i
 - Scores and retrospectives preserve learning.
 - Reports and bootstrap packets support handoff.
 
-MAW treats workflow state as an audit surface. The operator should be able to inspect what happened, why it happened, and what evidence supports the result.
+MAW treats workflow state as an audit surface. The operator console layer adds an orientation and recovery surface on top: status, next, doctor, transition guidance, recovery packets, scaffold paths, and local operator-experience metrics. The operator should be able to inspect what happened, why it happened, what evidence supports the result, and what to do next without opening JSON files.
 
 ## Current Repository Baseline
 
@@ -29,7 +29,7 @@ MAW treats workflow state as an audit surface. The operator should be able to in
 - Entry point: src/index.ts
 - CLI surface: src/cli.ts
 - Built target: dist/src/index.js
-- Current release baseline: 6d68de0 chore: expand bootstrap continuity architecture
+- Current release baseline: 2d7017f feat: add state-aware operator console
 - Main reference docs: README.md, docs/operator-manual.md, docs/operational-demonstrations.md
 
 The repository is source-focused. state/, artifacts/, dist/, and node_modules/ are intentionally ignored and should not be treated as product source.
@@ -114,6 +114,54 @@ performance update rebuilds per-agent performance memory from assignment history
 
 Insight: MAW feeds verified outcomes back into future planning, but the feedback remains local and inspectable.
 
+### Operator Orientation And Navigation
+
+The operator console layer answers four questions without inspecting JSON: where am I, what changed, what is next, and what is wrong.
+
+- status renders workflow state, active intent/deployment/task, readiness flags, blockers, stale conditions, risky conditions, the next safe command, and a one-line reason.
+- next prints exactly one recommended command. The optional --reason form adds the same one-line reason status would print.
+- doctor diagnoses setup, environment, and workflow issues without modifying state. It surfaces missing API keys, reviewer coverage gaps, local-command policy issues, action-required chat, current high-severity plan-check issues, and failed context checks.
+- Successful human-readable commands append transition guidance: workflow state, next command, and reason. JSON outputs and the report and bootstrap payloads remain untouched.
+
+Insight: orientation is a deterministic read over current state. operatorState is read-only and never calls validateWorkspace.
+
+### Structured Recovery
+
+Expected recoverable failures emit a structured packet rather than a bare error:
+
+- Error
+- Why
+- State Safety
+- Corrective Command
+- Then
+
+Unknown errors fall through to a concise message. MAW does not invent recovery advice for failures it does not recognize.
+
+Insight: recovery packets keep the operator on a known repair path while preserving honest behavior for unclassified errors.
+
+### Safe Extensibility
+
+Sanctioned scaffold paths let operators extend the system without hand-editing JSON or generating CLI source.
+
+- scaffold agent, scaffold reviewer, scaffold protocol, and scaffold command write only to state/agent_registry.json or protocols/<safe-name>.md.
+- Scaffolds default permissions to false, refuse duplicate IDs and existing protocol files, and reject unsafe paths or shell metacharacters.
+- scaffold command creates a local-command execution profile only. It does not generate new MAW CLI source commands. Local execution still requires deployment approval and run --execute.
+- Output includes Changed, Rollback, Next, and Reason so each extension is reversible and auditable.
+
+Insight: extension is governed and reversible. The product surface is intentionally bounded.
+
+### Operator Experience Metrics
+
+MAW records a small local operator-experience record at the CLI entry point.
+
+- State file: state/operator_experience.json.
+- Stored fields: normalized command family names, outcomes, timestamps, workflow state values, and safe workflow IDs already used by MAW state.
+- Not stored: intent text, approval scope, prompt text, review text, protocol body, command arguments, or any raw argv tokens.
+- Recording is best-effort. Pre-init invocations do not create state. The metrics command itself never records itself.
+- Derived metrics include next-step coverage, invalid command rate, help invocation rate, successful error recovery rate, extension success rate, time to first successful workflow, and commands before successful deployment.
+
+Insight: metrics measure the friction of the operator console, not the productivity of the human operator. They are local only with no external telemetry.
+
 ### Bootstrap Readiness
 
 bootstrap creates a session-readiness packet with:
@@ -183,6 +231,16 @@ Insight: bootstrap is readiness support, not full source understanding. It tells
 
 - src/bootstrap.ts: continuity collection, counter-context collection, posture evaluation, architecture metadata, and Markdown rendering for bootstrap packets.
 
+### Operator Console
+
+- src/operatorState.ts: workflow-state interpreter; reads workspace stores and returns workflow state, active objects, readiness flags, blockers, stale and risky conditions, and a single recommended next command.
+- src/operatorDoctor.ts: read-only diagnostics that produce findings with repair guidance.
+- src/operatorGuidance.ts: transition guidance renderer for successful human-readable commands.
+- src/operatorRecovery.ts: structured recovery packet matcher and renderer for known recoverable failures.
+- src/scaffold.ts: sanctioned extension scaffolds for agents, reviewers, protocols, and local-command profiles.
+- src/operatorExperience.ts: local friction metrics, command-family classification, event log, derived metrics, and report rendering.
+- src/operatorEntrypoint.ts: CLI wrapper that classifies the invocation, preserves recovery packet behavior, and records best-effort metrics.
+
 ## Data Flow
 
 Typical data flow:
@@ -200,7 +258,15 @@ Typical data flow:
 11. report reads current state and prints a Markdown handoff view.
 12. bootstrap reads local readiness signals and optionally persists a readiness packet.
 
-This flow keeps planning, approval, execution, verification, scoring, learning, and handoff as distinct audit stages.
+Operator console flow runs alongside the workflow flow:
+
+- status, next, and doctor read state and orient the operator without modifying anything.
+- Successful commands emit transition guidance so the operator sees workflow state and next command without inspecting JSON.
+- Recoverable failures emit structured repair packets; unknown failures fall through to a concise message.
+- Scaffold commands write only sanctioned artifacts under state/agent_registry.json or protocols/<safe-name>.md.
+- The CLI entry point records normalized friction events to state/operator_experience.json on a best-effort basis. Pre-init invocations do not create state, and operator metrics never records itself.
+
+This flow keeps planning, approval, execution, verification, scoring, learning, handoff, and operator orientation as distinct audit stages.
 
 ## Safety Boundaries
 
@@ -212,6 +278,10 @@ MAW is conservative about side effects:
 - local_command execution requires an allowlisted command and --execute.
 - model calls are limited to orchestrate, model_agent run tasks, and automatic structured reviewers.
 - runtime folders are ignored by git.
+- status, next, and doctor are read-only and never call validateWorkspace.
+- Operator-experience metrics are local only and do not store raw argv or free-form user text.
+- Pre-init help and invalid command invocations do not create state or the metrics file.
+- Scaffold mutations are limited to state/agent_registry.json or protocols/<safe-name>.md, and scaffold command does not generate MAW CLI source.
 
 The most important operator boundary is approval. A plan can exist without being safe to execute. Approval records the human decision to proceed or reject.
 
@@ -238,6 +308,9 @@ Current strengths:
 - Score, retrospective, and performance feedback loops.
 - Bootstrap readiness with posture and architecture metadata.
 - Repository hygiene enforcement for grave accent removal.
+- State-aware operator console with status, next, doctor, transition guidance, and structured recovery packets.
+- Sanctioned scaffold paths for agents, reviewers, protocols, and local-command profiles.
+- Local operator-experience metrics that surface friction signals without persisting raw user text.
 
 Current constraints:
 
@@ -255,8 +328,11 @@ Known deferred scope:
 
 ## Operator Insight
 
-MAW is most useful when treated as a disciplined workflow ledger:
+MAW is most useful when treated as a disciplined workflow ledger plus a state-aware operator console:
 
+- Use status to orient before acting.
+- Use next when you want a single recommended command without scanning state.
+- Use doctor before deciding to repair or escalate.
 - Use intent create before planning.
 - Treat plan-check as the approval precondition.
 - Treat approval scope as the execution contract.
@@ -264,8 +340,10 @@ MAW is most useful when treated as a disciplined workflow ledger:
 - Treat consensus as the verification gate.
 - Treat score and retrospective as feedback, not decoration.
 - Treat bootstrap posture as the session-start risk signal.
+- Treat scaffold paths as the only sanctioned way to extend the system.
+- Treat operator metrics as a local friction signal for the console itself, not a productivity score for the human.
 
-The core habit is simple: do not rely on memory or trust labels. Make the workflow leave inspectable evidence at each stage.
+The core habit is simple: do not rely on memory or trust labels. Make the workflow leave inspectable evidence at each stage, and let the operator console show you that evidence without opening JSON.
 
 ## Verification Expectations
 
