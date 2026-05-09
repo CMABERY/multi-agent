@@ -23,8 +23,8 @@ import {
 } from "./schemas.js";
 import { nowIso, saveJson, saveText } from "./storage.js";
 
-const UNTRACKED_BYTE_CAP = 16 * 1024;
-const WIDE_UNTRACKED_THRESHOLD = 12; // top-level untracked entries from git -unormal
+const GIT_OUTPUT_BYTE_CAP = 16 * 1024;
+const WIDE_UNTRACKED_THRESHOLD = 12; // top-level untracked entries from ls-files --others --directory
 const RECENT_ARTIFACT_LIMIT = 10;
 const FORBIDDEN_GIT_ARGS = "git args not on allowlist";
 
@@ -34,6 +34,7 @@ const ALLOWED_GIT_ARGS: ReadonlyArray<readonly string[]> = [
   ["rev-list", "--count", "HEAD"],
   ["remote"],
   ["status", "--porcelain", "-unormal"],
+  ["ls-files", "--others", "--exclude-standard", "--directory"],
   ["rev-parse", "--abbrev-ref", "HEAD"]
 ];
 
@@ -322,6 +323,7 @@ async function probeGit(root: string): Promise<BootstrapCounterContext["git"]> {
     has_commits: false,
     has_remote: false,
     dirty: false,
+    status_capped: false,
     untracked_count: 0,
     untracked_capped: false
   };
@@ -360,13 +362,19 @@ async function probeGit(root: string): Promise<BootstrapCounterContext["git"]> {
 
   const status = await runGit(root, ["status", "--porcelain", "-unormal"]);
   if (status.exitCode === 0) {
-    result.untracked_capped = status.byteLength >= UNTRACKED_BYTE_CAP;
+    result.status_capped = status.capped;
     const lines = status.stdout.split("\n").filter((line) => line.length > 0);
-    const untrackedLines = lines.filter((line) => line.startsWith("??"));
-    result.untracked_count = untrackedLines.length;
-    result.dirty = lines.length > 0 || result.untracked_capped;
+    result.dirty = lines.length > 0 || status.capped;
   } else if (!result.probe_error) {
     result.probe_error = status.stderr.trim() || "status failed";
+  }
+
+  const untrackedProbe = await runGit(root, ["ls-files", "--others", "--exclude-standard", "--directory"]);
+  if (untrackedProbe.exitCode === 0) {
+    result.untracked_capped = untrackedProbe.capped;
+    result.untracked_count = untrackedProbe.stdout.split("\n").filter((line) => line.length > 0).length;
+  } else if (!result.probe_error) {
+    result.probe_error = untrackedProbe.stderr.trim() || "untracked probe failed";
   }
 
   return result;
@@ -484,6 +492,13 @@ export function evaluatePosture(input: PostureInput): PostureResult {
     });
   }
 
+  if (input.counterContext.git.status_capped) {
+    escalations.push({
+      to: "wide_scan",
+      reason: "git status output capped: tracked/untracked dirty details may be incomplete; inspect full status before acting."
+    });
+  }
+
   if (!input.counterContext.git.present) {
     escalations.push({ to: "wide_scan", reason: "git repository not present in workspace root." });
   } else {
@@ -582,7 +597,7 @@ function buildClaims(input: {
     },
     {
       claim: input.counterContext.git.present
-        ? `Git repository present (commits=${input.counterContext.git.has_commits}, remote=${input.counterContext.git.has_remote}, top-level untracked entries=${input.counterContext.git.untracked_count}${input.counterContext.git.untracked_capped ? ", capped" : ""}).`
+        ? `Git repository present (commits=${input.counterContext.git.has_commits}, remote=${input.counterContext.git.has_remote}, status_capped=${input.counterContext.git.status_capped}, top-level untracked entries=${input.counterContext.git.untracked_count}${input.counterContext.git.untracked_capped ? ", capped" : ""}).`
         : "No git repository at workspace root.",
       source_paths: [".git"],
       command: "git rev-parse --is-inside-work-tree",
@@ -694,7 +709,7 @@ function renderContinuityBlock(continuity: BootstrapContinuity): string[] {
 function renderCounterContextBlock(counter: BootstrapCounterContext): string[] {
   const lines: string[] = [
     "## Counter-Context Frame",
-    `- Git: present=${counter.git.present} commits=${counter.git.has_commits} remote=${counter.git.has_remote} dirty=${counter.git.dirty} top-level untracked entries=${counter.git.untracked_count}${counter.git.untracked_capped ? " (capped)" : ""}${counter.git.branch ? ` branch=${counter.git.branch}` : ""}${counter.git.probe_error ? ` probe_error=${counter.git.probe_error}` : ""}`,
+    `- Git: present=${counter.git.present} commits=${counter.git.has_commits} remote=${counter.git.has_remote} dirty=${counter.git.dirty}${counter.git.status_capped ? " status_capped=true" : ""} top-level untracked entries=${counter.git.untracked_count}${counter.git.untracked_capped ? " (capped)" : ""}${counter.git.branch ? ` branch=${counter.git.branch}` : ""}${counter.git.probe_error ? ` probe_error=${counter.git.probe_error}` : ""}`,
     `- Hygiene: gitignore=${counter.hygiene.has_gitignore} dist=${counter.hygiene.dist_present} node_modules=${counter.hygiene.node_modules_present}`,
     "",
     "### Runtime Warnings",
@@ -781,31 +796,35 @@ interface GitInvocation {
   stdout: string;
   stderr: string;
   byteLength: number;
+  capped: boolean;
 }
 
 async function runGit(root: string, args: ReadonlyArray<string>): Promise<GitInvocation> {
   if (!isAllowedGitArgs(args)) {
-    return { exitCode: 1, stdout: "", stderr: FORBIDDEN_GIT_ARGS, byteLength: 0 };
+    return { exitCode: 1, stdout: "", stderr: FORBIDDEN_GIT_ARGS, byteLength: 0, capped: false };
   }
   return await new Promise<GitInvocation>((resolvePromise) => {
     const child = spawn("git", [...args], { cwd: root, shell: false, windowsHide: true });
-    let stdout = "";
+    const stdoutChunks: Buffer[] = [];
     let stderr = "";
     let bytes = 0;
+    let capturedBytes = 0;
     let truncated = false;
+    const capturedStdout = () => Buffer.concat(stdoutChunks).toString("utf8");
     child.stdout.on("data", (chunk: Buffer) => {
       bytes += chunk.length;
       if (truncated) return;
-      const remaining = UNTRACKED_BYTE_CAP - stdout.length;
+      const remaining = GIT_OUTPUT_BYTE_CAP - capturedBytes;
       if (remaining <= 0) {
         truncated = true;
         return;
       }
-      const text = chunk.toString("utf8");
-      if (text.length <= remaining) {
-        stdout += text;
+      if (chunk.length <= remaining) {
+        stdoutChunks.push(chunk);
+        capturedBytes += chunk.length;
       } else {
-        stdout += text.slice(0, remaining);
+        stdoutChunks.push(chunk.subarray(0, remaining));
+        capturedBytes += remaining;
         truncated = true;
       }
     });
@@ -813,10 +832,16 @@ async function runGit(root: string, args: ReadonlyArray<string>): Promise<GitInv
       stderr += chunk.toString("utf8");
     });
     child.on("error", () => {
-      resolvePromise({ exitCode: 1, stdout, stderr: stderr || "git not available", byteLength: bytes });
+      resolvePromise({
+        exitCode: 1,
+        stdout: capturedStdout(),
+        stderr: stderr || "git not available",
+        byteLength: bytes,
+        capped: truncated
+      });
     });
     child.on("close", (exitCode) => {
-      resolvePromise({ exitCode: exitCode ?? 1, stdout, stderr, byteLength: bytes });
+      resolvePromise({ exitCode: exitCode ?? 1, stdout: capturedStdout(), stderr, byteLength: bytes, capped: truncated });
     });
   });
 }

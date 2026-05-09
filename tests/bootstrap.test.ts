@@ -107,6 +107,9 @@ describe("bootstrap read-only invariants", () => {
     ]) {
       expect(source).not.toContain(forbidden);
     }
+    expect(source).toContain('"status"');
+    expect(source).toContain('"--porcelain"');
+    expect(source).toContain('"-unormal"');
     expect(source).not.toContain('"-uall"');
   });
 });
@@ -290,6 +293,47 @@ describe("bootstrap posture escalations", () => {
       expect(result.packet.counter_context.git.untracked_capped).toBe(false);
     });
   });
+
+  test("tracked-only status overflow is not reported as a large untracked surface", async () => {
+    await withWorkspace(async (root) => {
+      await initCommittedRepo(root);
+
+      await mkdir(join(root, "tracked"), { recursive: true });
+      for (let index = 0; index < 750; index += 1) {
+        await writeFile(join(root, "tracked", `file-${String(index).padStart(4, "0")}.txt`), "baseline\n");
+      }
+      await runGitInit(root, ["add", "tracked"]);
+      await runGitInit(root, ["commit", "-m", "add tracked files"]);
+
+      for (let index = 0; index < 750; index += 1) {
+        await writeFile(join(root, "tracked", `file-${String(index).padStart(4, "0")}.txt`), "modified\n");
+      }
+
+      const result = await runBootstrap(root, { workType: "ordinary" });
+
+      expect(result.packet.counter_context.git.status_capped).toBe(true);
+      expect(result.packet.counter_context.git.untracked_count).toBe(0);
+      expect(result.packet.counter_context.git.untracked_capped).toBe(false);
+      expect(result.packet.posture_reasons.some((reason) => reason.includes("large untracked surface"))).toBe(false);
+      expect(result.packet.posture_reasons.some((reason) => reason.includes("git status output capped"))).toBe(true);
+    });
+  });
+
+  test("actual large untracked surface escalates to wide_scan", async () => {
+    await withWorkspace(async (root) => {
+      await initCommittedRepo(root);
+
+      for (let index = 0; index < 14; index += 1) {
+        await writeFile(join(root, `untracked-${String(index).padStart(2, "0")}.txt`), "new\n");
+      }
+
+      const result = await runBootstrap(root, { workType: "ordinary" });
+
+      expect(result.packet.counter_context.git.untracked_count).toBeGreaterThan(12);
+      expect(result.packet.posture).toBe("wide_scan");
+      expect(result.packet.posture_reasons.some((reason) => reason.includes("large untracked surface"))).toBe(true);
+    });
+  });
 });
 
 describe("bootstrap output shapes", () => {
@@ -300,6 +344,20 @@ describe("bootstrap output shapes", () => {
       expect(() => BootstrapPacketSchema.parse(result.packet)).not.toThrow();
       expect(result.markdown).toContain("Bootstrap is readiness support");
       expect(result.markdown).toContain("## Posture");
+    });
+  });
+
+  test("schema defaults missing git status_capped to false for old packets", async () => {
+    await withWorkspace(async (root) => {
+      await initWorkspace(root);
+      const result = await runBootstrap(root, { workType: "ordinary" });
+      const oldStylePacket = JSON.parse(JSON.stringify(result.packet)) as Record<string, unknown>;
+      const counter = oldStylePacket.counter_context as { git: Record<string, unknown> };
+      delete counter.git.status_capped;
+
+      const parsed = BootstrapPacketSchema.parse(oldStylePacket);
+
+      expect((parsed.counter_context.git as { status_capped?: boolean }).status_capped).toBe(false);
     });
   });
 
@@ -370,6 +428,7 @@ function minimalCounter(options: {
       has_commits: options.hasCommits,
       has_remote: options.hasRemote,
       dirty: false,
+      status_capped: false,
       untracked_count: options.untrackedCount ?? 0,
       untracked_capped: options.untrackedCapped ?? false
     },
@@ -379,4 +438,14 @@ function minimalCounter(options: {
     parse_failures: [],
     not_inspected: []
   };
+}
+
+async function initCommittedRepo(root: string): Promise<void> {
+  await runGitInit(root, ["init"]);
+  await runGitInit(root, ["config", "user.email", "test@example.com"]);
+  await runGitInit(root, ["config", "user.name", "Test User"]);
+  await writeFile(join(root, "baseline.txt"), "baseline\n");
+  await runGitInit(root, ["add", "."]);
+  await runGitInit(root, ["commit", "-m", "baseline"]);
+  await runGitInit(root, ["remote", "add", "origin", "https://example.com/repo.git"]);
 }

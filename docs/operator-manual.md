@@ -969,7 +969,7 @@ Reads (best-effort, never fails on missing files):
 - `package.json`, `tsconfig.json`
 - `state/deployment_plan.json`, `state/task_board.json`, `state/agent_registry.json`, `state/intent_queue.json`, `state/model_config.json`
 - `artifacts/artifact_index.json`
-- `.git/` (read-only `git rev-parse`, `rev-list`, `remote`, bounded `status --porcelain -unormal`, `rev-parse --abbrev-ref`)
+- `.git/` (read-only `git rev-parse`, `rev-list`, `remote`, bounded `status --porcelain -unormal`, bounded `ls-files --others --exclude-standard --directory`, `rev-parse --abbrev-ref`)
 - `.gitignore`, `dist/`, `node_modules/` (presence only, not contents)
 
 Writes:
@@ -987,7 +987,7 @@ Does not:
 Posture levels and exit codes:
 
 - `normal` → exit `0`. No escalations triggered.
-- `wide_scan` → exit `0`. Source-of-truth gaps, large/capped top-level untracked entries, hygiene gaps, active deployments/tasks, or doc/code drift detected — review more before acting.
+- `wide_scan` → exit `0`. Source-of-truth gaps, capped total git status output, large/capped top-level untracked entries, hygiene gaps, active deployments/tasks, or doc/code drift detected — review more before acting.
 - `governed` → exit `1`. `wide_scan` triggers combined with `--work-type risky` or `architecture`. `required_extra_review` will list extra steps such as initializing git, adding `.gitignore`, or running `plan-check` before approval.
 - `ask_human` → exit `2`. Hard stop: core state file unparseable, running deployment overlaps with `stateful`/`risky`/`architecture` work, or risky work attempted without reliable source truth.
 
@@ -1006,6 +1006,7 @@ Operator notes:
 
 - Posture decisions are deterministic and transparent: every escalation appears in `posture_reasons` with a one-line rationale.
 - Ordinary work in a workspace with a wide top-level untracked surface escalates to `wide_scan`.
+- `status_capped` means the bounded total `git status --porcelain -unormal` output was truncated; it is separate from `untracked_capped`, which only means the bounded untracked-entry probe was truncated.
 - Bootstrap intentionally surfaces what it has *not* inspected (see `not_inspected` in JSON / `### Not Inspected` in Markdown). Treat that list as a prompt to widen scope before acting.
 - The Markdown renderer puts Counter-Context **before** Continuity whenever posture is elevated, so warnings are not buried under the active-task summary.
 

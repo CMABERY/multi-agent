@@ -526,6 +526,7 @@ export const BootstrapCounterContextSchema = z.object({
     has_remote: z.boolean(),
     branch: z.string().optional(),
     dirty: z.boolean(),
+    status_capped: z.boolean().default(false),
     untracked_count: z.number().int().nonnegative(),
     untracked_capped: z.boolean(),
     probe_error: z.string().optional()
